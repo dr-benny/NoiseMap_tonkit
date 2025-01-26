@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
       #map {
-        height: 600px;
+        height: 100vh;
       }
 
       .leaflet-div-icon {
@@ -39,6 +39,10 @@
         display: inline-block;
       }
     </style>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -48,22 +52,15 @@
       rel="stylesheet"
     />
   </head>
+
   <body>
     <div id="map"></div>
     <script>
       $(document).ready(function () {
-        var map = L.map("map").setView([13.756111, 100.516667], 13);
+        //Set start point at user location
+        const map = L.map("map").setView([13.756111, 100.516667], 13);
 
-        // Base layers
-        var satelliteLayer = L.tileLayer(
-          "https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-          {
-            maxZoom: 20,
-            subdomains: ["mt0", "mt1", "mt2", "mt3"],
-            attribution: "© Google Maps",
-          }
-        );
-
+        //BaseMap
         var terrainLayer = L.tileLayer(
           "https://{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}",
           {
@@ -73,52 +70,71 @@
           }
         );
 
+        var satelliteLayer = L.tileLayer(
+          "https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+          {
+            maxZoom: 20,
+            subdomains: ["mt0", "mt1", "mt2", "mt3"],
+            attribution: "© Google Maps",
+          }
+        );
         terrainLayer.addTo(map);
 
         // Determine marker color based on noise level
         function getMarkerColor(noiseLevel) {
-          if (noiseLevel > 70) return "#FF0000"; // Red
-          else if (noiseLevel > 50) return "#FFA500"; // Orange
-          else return "#008000"; // Green
+          if (noiseLevel > 70) return "red";
+          else if (noiseLevel > 50) return "orange";
+          else return "green";
         }
 
         // Load GeoJSON from GeoServer
         function loadGeoJSON() {
           $.ajax({
-            url: "http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:current&outputFormat=application/json",
+            url: "http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:current_noise&outputFormat=application/json",
             method: "GET",
             success: function (data) {
               if (data && data.features) {
                 L.geoJSON(data, {
                   pointToLayer: function (feature, latlng) {
-                    var markerColor = getMarkerColor(
+                    const markerColor = getMarkerColor(
                       feature.properties.noise_level
                     );
-                    var pinIcon = L.divIcon({
-                      className: "leaflet-div-icon",
-                      html: `<i class="fas fa-map-marker-alt" style="color:${markerColor}; font-size: 35px;"></i>`,
-                      iconSize: [25, 35],
-                    });
-                    return L.marker(latlng, { icon: pinIcon });
+
+                    const geojsonMarkerOptions = {
+                      radius: 10,
+                      fillColor: markerColor,
+                      color: "#000",
+                      weight: 1,
+                      opacity: 1,
+                      fillOpacity: 0.8,
+                    };
+                    return L.circleMarker(latlng, geojsonMarkerOptions);
                   },
                   onEachFeature: function (feature, layer) {
-                    var time = new Date(
+                    let moreInfoShow = false;
+                    const time = new Date(
                       feature.properties.time
                     ).toLocaleString();
-                    var popupContent = `
-                                              <div class="popup-content">
-                                                  <p><span class="title">Noise Level:</span> ${feature.properties.noise_level} dB</p>
-                                                  <p><span class="title">Time:</span> ${time}</p>
-                                                  <button class="popup-btn" data-id="${feature.properties.id}">More Info</button>
-                                              </div>
-                                          `;
+                    const popupContent = `
+    <div class="popup-content p-3">
+        <p><span class="fw-bold">Noise Level:</span> ${feature.properties.noise_level} dB</p>
+        <p><span class="fw-bold">Latest Time:</span> ${time}</p>
+        <button class="btn btn-primary btn-sm popup-btn" data-id="${feature.properties.id}">More Info</button>
+    </div>
+`;
                     layer.bindPopup(popupContent);
 
                     // Attach event listener for button
                     layer.on("popupopen", function () {
-                      $(".popup-btn").on("click", function () {
+                      console.log(moreInfoShow);
+                      if (!moreInfoShow) {
+                        layer.bindPopup(popupContent);
+                        $(".popup-btn").on("click", function () {
+                          fetchAdditionalInfo($(this).data("id"), layer);
+                        });
+                      } else {
                         fetchAdditionalInfo($(this).data("id"), layer);
-                      });
+                      }
                     });
                   },
                 }).addTo(map);
@@ -134,39 +150,56 @@
         function fetchAdditionalInfo(id, layer) {
           console.log(layer);
           $.ajax({
-            url: `http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:geodata&outputFormat=application/json&CQL_FILTER=INTERSECTS(coordinates,POINT(${layer.feature.geometry.coordinates[0]} ${layer.feature.geometry.coordinates[1]}))&SORTBY=time
-`,
+            url: `http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:noise_spatial_table&outputFormat=application/json&CQL_FILTER=INTERSECTS(coordinate,POINT(${layer.feature.geometry.coordinates[0]} ${layer.feature.geometry.coordinates[1]}))&SORTBY=time`,
             method: "GET",
-            success: function (data) {
-              var additionalContent = `
-        <div class="popup-content">
-          <p><span class="title">Noise Level:</span> ${
-            data.features[0].properties.noise_level
-          } dB</p>
-          <p><span class="title">Time:</span> ${new Date(
-            layer.feature.properties.time
-          ).toLocaleString()}</p>
-          <label for="time-filter">Select Time Range:</label>
-          <input type="datetime-local" id="start-time" />
-          <input type="datetime-local" id="end-time" />
-          <button id="update-chart">Update Chart</button>
-          <canvas id="noiseChart"></canvas>
-          <button id="downloadChart" class="popup-btn-download">Download Chart</button>
+            success: async function (data) {
+              const additionalContent = `
+        <div class="popup-content container p-3">
+          <p>
+            <span class="title fw-bold">Noise Level:</span> 
+            <span class="badge bg-primary" style="font-size:0.7rem">${
+              data.features[0].properties.noise_level
+            } dB</span>
+          </p>
+          <p>
+            <span class="title fw-bold">Time:</span> 
+            <span class="text-muted">${new Date(
+              layer.feature.properties.time
+            ).toLocaleString()}</span>
+          </p>
 
-          <button class="popup-btn-back">Back</button>
+          <div class="mb-3">
+            <label for="time-filter" class="form-label fw-bold">Select Time Range:</label>
+            <div class="input-group">
+              <input type="datetime-local" id="start-time" class="form-control me-2" />
+              <input type="datetime-local" id="end-time" class="form-control" />
+            </div>
+          </div>
+
+          <button id="update-chart" class="btn btn-primary w-100 my-2">Update Chart</button>
+
+          <div class="my-3">
+            <canvas id="noiseChart" class="border rounded shadow-sm"></canvas>
+          </div>
+
+          <div class="d-flex justify-content-between">
+            <button class="popup-btn-back btn btn-secondary">Back</button>
+            <button id="downloadChart" class="btn btn-success">Download Chart</button>
+          </div>
         </div>
       `;
-              layer.setPopupContent(additionalContent).openPopup();
-              let chartInstance = null; // ตัวแปรเก็บอินสแตนซ์ของ Chart
-              function createChart(features, chartId) {
-                // ทำลายกราฟเดิมหากมี
-                if (chartInstance) {
-                  chartInstance.destroy();
-                }
+              //layer.setPopupContent(additionalContent).openPopup();
+              layer.bindPopup(additionalContent);
 
-                var ctx = document.getElementById(chartId).getContext("2d");
-                var labels = [];
-                var noiseLevels = [];
+              moreInfoShow = true;
+              layer.on("popupclose", function () {
+                layer.chartInstance.destroy();
+              });
+              async function createChart(features, chartId) {
+                console.log("create");
+                const ctx = document.getElementById(chartId).getContext("2d");
+                const labels = [];
+                const noiseLevels = [];
 
                 features.forEach((feature) => {
                   labels.push(
@@ -175,8 +208,7 @@
                   noiseLevels.push(feature.properties.noise_level);
                 });
 
-                // สร้างกราฟใหม่และเก็บอินสแตนซ์ใน chartInstance
-                chartInstance = new Chart(ctx, {
+                layer.chartInstance = new Chart(ctx, {
                   type: "line",
                   data: {
                     labels: labels,
@@ -199,17 +231,17 @@
                   },
                 });
               }
+              setTimeout(() => {
+                createChart(data.features, "noiseChart");
+              }, 300);
 
-              // Initial chart creation
-              createChart(data.features, "noiseChart");
-
-              // Attach event listener for updating chart
+              // Update chart on time range change
               $("#update-chart").on("click", function () {
-                var startTime = $("#start-time").val();
-                var endTime = $("#end-time").val();
+                const startTime = $("#start-time").val();
+                const endTime = $("#end-time").val();
                 if (startTime && endTime) {
-                  var filteredData = data.features.filter((feature) => {
-                    var featureTime = new Date(feature.properties.time);
+                  const filteredData = data.features.filter((feature) => {
+                    const featureTime = new Date(feature.properties.time);
                     return (
                       featureTime >= new Date(startTime) &&
                       featureTime <= new Date(endTime)
@@ -221,86 +253,47 @@
                 }
               });
 
-              $("#downloadChart")
-                .off("click")
-                .on("click", function () {
-                  if (chartInstance) {
-                    // สร้าง canvas ชั่วคราว
-                    const canvas = document.createElement("canvas");
-                    const ctx = canvas.getContext("2d");
+              // Download chart functionality
+              $("#downloadChart").on("click", function () {
+                if (layer.chartInstance) {
+                  const canvas = document.createElement("canvas");
+                  const ctx = canvas.getContext("2d");
+                  canvas.width = layer.chartInstance.canvas.width;
+                  canvas.height = layer.chartInstance.canvas.height;
 
-                    // ตั้งค่าขนาด canvas ให้เท่ากับขนาดของกราฟเดิม
-                    canvas.width = chartInstance.canvas.width;
-                    canvas.height = chartInstance.canvas.height;
+                  ctx.fillStyle = "white";
+                  ctx.fillRect(0, 0, canvas.width, canvas.height);
+                  ctx.drawImage(layer.chartInstance.canvas, 0, 0);
 
-                    // วาด background
-                    ctx.fillStyle = "white"; // กำหนดสีพื้นหลัง (เปลี่ยนได้ตามต้องการ)
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                    // วาดกราฟลงบน canvas ชั่วคราว
-                    ctx.drawImage(chartInstance.canvas, 0, 0);
-
-                    // แปลง canvas ชั่วคราวเป็น Base64 Image
-                    const link = document.createElement("a");
-                    link.href = canvas.toDataURL("image/png"); // กำหนดรูปแบบเป็น PNG
-                    link.download = "chart.png"; // ตั้งชื่อไฟล์
-                    link.click();
-                  } else {
-                    console.error("Chart instance is not available.");
-                  }
-                });
-
-              // Attach event listener to back button
-              let isPopupClosing = false;
-              $(".popup-btn-back").on("click", function () {
-                if (!isPopupClosing) {
-                  isPopupClosing = true; // ตั้งค่าตัวแปร flag เป็น true เมื่อทำการปิด popup
-                  layer.closePopup(); // ปิด popup
-                  isPopupClosing = false; // รีเซ็ตตัวแปร flag หลังจากปิด popup
+                  const link = document.createElement("a");
+                  link.href = canvas.toDataURL("image/png");
+                  link.download = "chart.png";
+                  link.click();
+                } else {
+                  console.error("Chart instance is not available.");
                 }
-                if (chartInstance) {
-                  chartInstance.destroy();
-                  chartInstance = null;
-                }
-                // เก็บเนื้อหาของ Popup ดั้งเดิมในตัวแปร
-                var originalContent = `
-  <div class="popup-content">
-    <p><span class="title">Noise Level:</span> ${
-      layer.feature.properties.noise_level
-    } dB</p>
-    <p><span class="title">Time:</span> ${new Date(
-      layer.feature.properties.time
-    ).toLocaleString()}</p>
-    <button class="popup-btn" data-id="${
-      layer.feature.properties.id
-    }">More Info</button>
-  </div>
-`;
-
-                // ใช้งาน setTimeout พร้อมการอ้างอิงตัวแปร
-                setTimeout(function () {
-                  layer.bindPopup(originalContent); // ผูก Popup ใหม่
-                  layer.setPopupContent(originalContent).openPopup(); // แสดง Popup
-                  $(".popup-btn").on("click", function () {
-                    fetchAdditionalInfo($(this).data("id"), layer);
-                  });
-                }, 100);
               });
 
-              isPopupClosing = false; // ตัวแปรสถานะ
-              layer.on("popupclose", function () {
-                if (!isPopupClosing) {
-                  isPopupClosing = true;
+              // Handle back button
+              $(".popup-btn-back").on("click", function () {
+                const time = new Date(
+                  layer.feature.properties.time
+                ).toLocaleString();
+                const popupContent = `
+    <div class="popup-content p-3">
+        <p><span class="fw-bold">Noise Level:</span> ${layer.feature.properties.noise_level} dB</p>
+        <p><span class="fw-bold">Latest Time:</span> ${time}</p>
+        <button class="btn btn-primary btn-sm popup-btn" data-id="${layer.feature.properties.id}">More Info</button>
+    </div>
+`;
 
-                  // รีเซ็ต Popup กลับไปที่เนื้อหาเดิมเมื่อเปิดใหม่
-                  setTimeout(function () {
-                    layer.setPopupContent(originalContent);
-                    $(".popup-btn").on("click", function () {
-                      fetchAdditionalInfo($(this).data("id"), layer);
-                    });
-                    isPopupClosing = false; // รีเซ็ตสถานะ
-                  }, 100);
-                }
+                layer.closePopup();
+                layer.chartInstance.destroy();
+                moreInfoShow = false;
+                setTimeout(() => {
+                  layer.bindPopup(popupContent); // Bind new content
+                  layer.openPopup(); // Open the popup
+                }, 100);
               });
             },
             error: function (error) {
@@ -316,11 +309,23 @@
         legend.onAdd = function () {
           var div = L.DomUtil.create("div", "legend");
           div.innerHTML = `
-                          <h4>Noise Level Legend</h4>
-                          <p><span class="color-box" style="background-color:#FF0000;"></span> High (70+ dB)</p>
-                          <p><span class="color-box" style="background-color:#FFA500;"></span> Medium (50-69 dB)</p>
-                          <p><span class="color-box" style="background-color:#008000;"></span> Low (below 50 dB)</p>
-                      `;
+  <div class="legend p-3 border rounded shadow-sm bg-light">
+    <h4 class="fw-bold mb-3">Noise Level Legend</h4>
+    <p class="d-flex align-items-center">
+      <span class="color-box me-2" style="background-color:#FF0000; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span> 
+      <span class="text-danger fw-bold">High (70+ dB)</span>
+    </p>
+    <p class="d-flex align-items-center">
+      <span class="color-box me-2" style="background-color:#FFA500; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span> 
+      <span class="text-warning fw-bold">Medium (50-69 dB)</span>
+    </p>
+    <p class="d-flex align-items-center">
+      <span class="color-box me-2" style="background-color:#008000; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span> 
+      <span class="text-success fw-bold">Low (below 50 dB)</span>
+    </p>
+  </div>
+`;
+
           return div;
         };
         legend.addTo(map);
