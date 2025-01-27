@@ -59,7 +59,6 @@
       $(document).ready(function () {
         //Set start point at user location
         const map = L.map("map").setView([13.756111, 100.516667], 13);
-
         //BaseMap
         var terrainLayer = L.tileLayer(
           "https://{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}",
@@ -89,6 +88,7 @@
 
         // Load GeoJSON from GeoServer
         function loadGeoJSON() {
+          // fetch data
           $.ajax({
             url: "http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:current_noise&outputFormat=application/json",
             method: "GET",
@@ -111,7 +111,6 @@
                     return L.circleMarker(latlng, geojsonMarkerOptions);
                   },
                   onEachFeature: function (feature, layer) {
-                    let moreInfoShow = false;
                     const time = new Date(
                       feature.properties.time
                     ).toLocaleString();
@@ -123,11 +122,11 @@
     </div>
 `;
                     layer.bindPopup(popupContent);
-
+                    layer.moreInfoShow = false;
                     // Attach event listener for button
                     layer.on("popupopen", function () {
-                      console.log(moreInfoShow);
-                      if (!moreInfoShow) {
+                      console.log(layer.moreInfoShow);
+                      if (!layer.moreInfoShow) {
                         layer.bindPopup(popupContent);
                         $(".popup-btn").on("click", function () {
                           fetchAdditionalInfo($(this).data("id"), layer);
@@ -145,6 +144,7 @@
             },
           });
         }
+        ////////////
 
         // Fetch additional information and update the popup
         function fetchAdditionalInfo(id, layer) {
@@ -152,7 +152,7 @@
           $.ajax({
             url: `http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:noise_spatial_table&outputFormat=application/json&CQL_FILTER=INTERSECTS(coordinate,POINT(${layer.feature.geometry.coordinates[0]} ${layer.feature.geometry.coordinates[1]}))&SORTBY=time`,
             method: "GET",
-            success: async function (data) {
+            success: function (data) {
               const additionalContent = `
         <div class="popup-content container p-3">
           <p>
@@ -190,13 +190,8 @@
       `;
               //layer.setPopupContent(additionalContent).openPopup();
               layer.bindPopup(additionalContent);
-
-              moreInfoShow = true;
-              layer.on("popupclose", function () {
-                layer.chartInstance.destroy();
-              });
+              layer.moreInfoShow = true;
               async function createChart(features, chartId) {
-                console.log("create");
                 const ctx = document.getElementById(chartId).getContext("2d");
                 const labels = [];
                 const noiseLevels = [];
@@ -289,7 +284,7 @@
 
                 layer.closePopup();
                 layer.chartInstance.destroy();
-                moreInfoShow = false;
+                layer.moreInfoShow = false;
                 setTimeout(() => {
                   layer.bindPopup(popupContent); // Bind new content
                   layer.openPopup(); // Open the popup
