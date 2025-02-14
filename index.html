@@ -58,26 +58,44 @@
     <script>
       $(document).ready(function () {
         //Set start point at user location
-        const map = L.map("map").setView([13.756111, 100.516667], 13);
+
         //BaseMap
         var terrainLayer = L.tileLayer(
-          "https://{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}",
+          "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
           {
-            maxZoom: 20,
-            subdomains: ["mt0", "mt1", "mt2", "mt3"],
-            attribution: "© Google Maps",
+            maxZoom: 19, // OSM max zoom level is usually 19
+            opacity: 0.8,
+            minZoom: 5,
+            attribution: "© OpenStreetMap contributors",
+          }
+        );
+        var blackOverlay = L.rectangle(
+          [
+            [-90, -180],
+            [90, 180],
+          ], // Covers the whole world
+          {
+            color: "black", // Border color (optional)
+            weight: 0, // No border
+            fillColor: "black", // Fill color
+            fillOpacity: 0.3, // Adjust darkness (0.0 = fully transparent, 1.0 = fully black)
           }
         );
 
         var satelliteLayer = L.tileLayer(
           "https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
           {
-            maxZoom: 20,
+            maxZoom: 19,
+            opacity: 0.8,
+            minZoom: 5,
             subdomains: ["mt0", "mt1", "mt2", "mt3"],
             attribution: "© Google Maps",
           }
         );
-        terrainLayer.addTo(map);
+        const map = L.map("map", {
+          zoom: 2, // Adjust zoom level
+          layers: [terrainLayer, blackOverlay],
+        }).setView([13.756111, 100.516667], 13);
 
         // Determine marker color based on noise level
         function getMarkerColor(noiseLevel) {
@@ -156,7 +174,8 @@
           );
 
           // Compute mean energy and LAeq,1h
-          return 10 * Math.log10(sum / 60);
+          const laeq1h = 10 * Math.log10(sum / 60);
+          return parseFloat(laeq1h.toFixed(1));
         }
 
         // Fetch additional information and update the popup
@@ -181,7 +200,7 @@
               const additionalContent = `
               <div class="popup-content container p-3">
                 <p>
-                  <span class="title fw-bold">Laeq : ${calculateLAeq(
+                  <span class="title fw-bold">LAeq 1hr: ${calculateLAeq(
                     laeq1minArray
                   )}</span>
                   <span class="badge bg-primary" style="font-size:0.7rem">dB</span>
