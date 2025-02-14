@@ -118,7 +118,6 @@
             url: "http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:current_noise&outputFormat=application/json",
             method: "GET",
             success: function (data) {
-              console.log(data);
               if (data && data.features) {
                 L.geoJSON(data, {
                   pointToLayer: function (feature, latlng) {
@@ -151,7 +150,6 @@
                     layer.moreInfoShow = false;
                     // Attach event listener for button
                     layer.on("popupopen", function () {
-                      console.log(layer.moreInfoShow);
                       if (!layer.moreInfoShow) {
                         layer.bindPopup(popupContent);
                         $(".popup-btn").on("click", function () {
@@ -227,10 +225,46 @@
           link.click();
           document.body.removeChild(link);
         }
+        function formatDateForInput(date) {
+          // Helper function to add a leading zero if needed
+          const pad = (num) => (num < 10 ? "0" + num : num);
+
+          const year = date.getFullYear();
+          const month = pad(date.getMonth() + 1); // Months are zero-indexed
+          const day = pad(date.getDate());
+          const hours = pad(date.getHours());
+          const minutes = pad(date.getMinutes());
+
+          return `${year}-${month}-${day}T${hours}:${minutes}`;
+        }
+        /*function updateBatteryIcon(batteryLevel) {
+  const batteryIcon = document.getElementById('battery-icon');
+  const batteryPercentage = document.getElementById('battery-percentage');
+
+  // Update the percentage text
+  batteryPercentage.textContent = `${batteryLevel}%`;
+
+  // Determine the appropriate battery icon class
+  let iconClass;
+  if (batteryLevel > 75) {
+    iconClass = 'fa-battery-full';
+  } else if (batteryLevel > 50) {
+    iconClass = 'fa-battery-three-quarters';
+  } else if (batteryLevel > 25) {
+    iconClass = 'fa-battery-half';
+  } else if (batteryLevel > 10) {
+    iconClass = 'fa-battery-quarter';
+  } else {
+    iconClass = 'fa-battery-empty';
+  }
+
+  // Update the icon's class
+  batteryIcon.className = `fa ${iconClass}`;
+}
+         */
 
         // Fetch additional information and update the popup
         function fetchAdditionalInfo(id, layer) {
-          console.log(layer);
           $.ajax({
             url: `http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:noise_spatial_table&outputFormat=application/json&CQL_FILTER=INTERSECTS(coordinate,POINT(${layer.feature.geometry.coordinates[0]} ${layer.feature.geometry.coordinates[1]}))&SORTBY=time+D&maxFeatures=60`,
             method: "GET",
@@ -248,28 +282,53 @@
               });
 
               const additionalContent = `
+<div id="battery-container" class="position-absolute badge bg-black" style="right:3rem;top:5.8rem">
+  <i id="battery-icon" class="fa fa-battery-full" style="font-size:1rem;"></i>
+  <span id="battery-percentage" style="font-size:1.2rem">100%</span>
+</div>
+
+              <div class="position-absolute bg-warning badge" style="right:2.5rem;top:2.6rem;font-size:1.4rem;color:black;border-radius:0.8rem;"> ID:1 | TonkitLab </div>
               <div class="popup-content container p-3">
+                <div>
                 <p>
                   <span class="h6 fw-bold text-secondary">LAeq 1hr: </span>
-                  <span class="h6 fw-bold"><i class="fa fa-microphone"></i> ${calculateLAeq(
+                  <span class="h4 fw-bold"><i class="fa fa-microphone"></i> ${calculateLAeq(
                     laeq1minArray
                   )}
                   </span>
                   <span class="badge bg-primary" style="font-size:0.9rem;margin-left:0.2rem;">dB(A)</span>
                 </p>
-                <p>
-                  <span class="title fw-bold">Time:</span>
-                  <span class="text-muted">${new Date(
-                    layer.feature.properties.time
-                  ).toLocaleString()}</span>
-                </p>
+                </div>
+                
 
-                <div class="mb-3">
-                  <label for="time-filter" class="form-label fw-bold">Select Time Range:</label>
-                  <div class="input-group">
-                    <input type="datetime-local" id="start-time" class="form-control me-2" />
-                    <input type="datetime-local" id="end-time" class="form-control" />
+  
+                <div class="mb-3 mt-5">
+                  <label for="time-filter" class="form-label fw-bold h6 text-secondary">Select Time Range:</label>
+          
+                  <div class="input-group row">
+<div class="col"><div class="p-1 badge bg-success mb-1 fw-bold"style="font-size:0.9rem;">START <i class="fa-solid fa-clock"></i></div></div>
+
+                    <div class="col"><div class="p-1 badge bg-danger mb-1 fw-bold"style="font-size:0.9rem;">END <i class="fa-solid fa-clock"></i></div></div>
+
+
+                    <div class="w-100"></div>
+
+
+                  <div class="col">
+                   <input type="datetime-local" id="start-time" class="form-control me-2 " value="${formatDateForInput(
+                     new Date(data.features.pop().properties.time)
+                   )}"/>
+                   </div>
+
+                    <div class="col">
+                    <input type="datetime-local" id="end-time" class="form-control me-2" value="${formatDateForInput(
+                      new Date(data.features[0].properties.time)
+                    )}"/>
+                   </div>
+
+                                         
                   </div>
+                   
                 </div>
 
                 <button id="update-chart" class="btn btn-primary w-100 my-2">Update Chart</button>
@@ -379,7 +438,7 @@
                 setTimeout(() => {
                   layer.bindPopup(popupContent); // Bind new content
                   layer.openPopup(); // Open the popup
-                }, 0);
+                }, 100);
               });
             },
             error: function (error) {
