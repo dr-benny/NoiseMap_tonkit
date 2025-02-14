@@ -9,7 +9,6 @@
       #map {
         height: 100vh;
       }
-
       .leaflet-div-icon {
         background: transparent !important;
         border: none !important;
@@ -37,6 +36,14 @@
         width: 20px;
         height: 20px;
         display: inline-block;
+      }
+      .popup-content .my-3 {
+        width: 600px;
+        height: 300px;
+      }
+
+      .leaflet-popup-content {
+        width: auto !important;
       }
     </style>
     <link
@@ -134,7 +141,7 @@
                       feature.properties.time
                     ).toLocaleString();
                     const popupContent = `
-          <div class="popup-content p-3">
+          <div class="popup-content p-3" style="width:300px">
               <p><span class="fw-bold">Noise Level:</span> ${feature.properties.noise_level} dB</p>
               <p><span class="fw-bold">Latest Time:</span> ${time}</p>
               <button class="btn btn-primary btn-sm popup-btn" data-id="${feature.properties.id}">More Info</button>
@@ -177,6 +184,49 @@
           const laeq1h = 10 * Math.log10(sum / 60);
           return parseFloat(laeq1h.toFixed(1));
         }
+        function downloadCSVFromArrays(
+          timeLabels,
+          noiseLevels,
+          filename = "data.csv"
+        ) {
+          if (
+            !timeLabels ||
+            !noiseLevels ||
+            timeLabels.length !== noiseLevels.length
+          ) {
+            console.error(
+              "Both arrays must be provided and have the same length."
+            );
+            return;
+          }
+
+          // Create header row
+          let csvContent = "Time,Noise Level\n";
+
+          // Build rows
+          for (let i = 0; i < timeLabels.length; i++) {
+            // Wrap each value in quotes to handle commas and special characters
+            const time = `"${timeLabels[i]}"`;
+            const noise = `"${noiseLevels[i]}"`;
+            csvContent += `${time},${noise}\n`;
+          }
+
+          // Create a Blob from the CSV content
+          const blob = new Blob([csvContent], {
+            type: "text/csv;charset=utf-8;",
+          });
+          const url = URL.createObjectURL(blob);
+
+          // Create a temporary link element to trigger the download
+          const link = document.createElement("a");
+          link.setAttribute("href", url);
+          link.setAttribute("download", filename);
+          link.style.visibility = "hidden";
+
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
 
         // Fetch additional information and update the popup
         function fetchAdditionalInfo(id, layer) {
@@ -200,10 +250,12 @@
               const additionalContent = `
               <div class="popup-content container p-3">
                 <p>
-                  <span class="title fw-bold">LAeq 1hr: ${calculateLAeq(
+                  <span class="h6 fw-bold text-secondary">LAeq 1hr: </span>
+                  <span class="h6 fw-bold"><i class="fa fa-microphone"></i> ${calculateLAeq(
                     laeq1minArray
-                  )}</span>
-                  <span class="badge bg-primary" style="font-size:0.7rem">dB</span>
+                  )}
+                  </span>
+                  <span class="badge bg-primary" style="font-size:0.9rem;margin-left:0.2rem;">dB(A)</span>
                 </p>
                 <p>
                   <span class="title fw-bold">Time:</span>
@@ -228,7 +280,10 @@
 
                 <div class="d-flex justify-content-between">
                   <button class="popup-btn-back btn btn-secondary">Back</button>
+                  <div>
+                  <button id="downloadCSVButton" class="btn btn-primary" style="margin-right:0.5rem">Download CSV</button>
                   <button id="downloadChart" class="btn btn-success">Download Chart</button>
+                  </div>
                 </div>
               </div>
             `;
@@ -237,32 +292,30 @@
               layer.moreInfoShow = true;
 
               // Optimize chart creation
-              setTimeout(() => {
-                const canvas = document.getElementById("noiseChart");
-                if (!canvas) return; // Prevent errors if popup closes before render
+              const canvas = document.getElementById("noiseChart");
+              if (!canvas) return; // Prevent errors if popup closes before render
 
-                const ctx = canvas.getContext("2d");
-                layer.chartInstance = new Chart(ctx, {
-                  type: "line",
-                  data: {
-                    labels: labels,
-                    datasets: [
-                      {
-                        label: "Noise Levels",
-                        data: laeq1minArray,
-                        borderColor: "rgba(75, 192, 192, 1)",
-                        borderWidth: 2,
-                        fill: false,
-                      },
-                    ],
-                  },
-                  options: {
-                    scales: {
-                      y: { beginAtZero: true },
+              const ctx = canvas.getContext("2d");
+              layer.chartInstance = new Chart(ctx, {
+                type: "line",
+                data: {
+                  labels: labels,
+                  datasets: [
+                    {
+                      label: "Noise Levels",
+                      data: laeq1minArray,
+                      borderColor: "rgba(75, 192, 192, 1)",
+                      borderWidth: 2,
+                      fill: false,
                     },
+                  ],
+                },
+                options: {
+                  scales: {
+                    x: { display: false },
                   },
-                });
-              }, 200);
+                },
+              });
 
               // Update chart on time range change
               $("#update-chart").on("click", function () {
@@ -280,6 +333,10 @@
                 } else {
                   alert("Please select both start and end times.");
                 }
+              });
+
+              $("#downloadCSVButton").on("click", function () {
+                downloadCSVFromArrays(labels, laeq1minArray, "noiseData.csv");
               });
 
               // Download chart functionality
@@ -322,7 +379,7 @@
                 setTimeout(() => {
                   layer.bindPopup(popupContent); // Bind new content
                   layer.openPopup(); // Open the popup
-                }, 100);
+                }, 0);
               });
             },
             error: function (error) {
