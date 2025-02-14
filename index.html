@@ -93,6 +93,7 @@
             url: "http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:current_noise&outputFormat=application/json",
             method: "GET",
             success: function (data) {
+              console.log(data);
               if (data && data.features) {
                 L.geoJSON(data, {
                   pointToLayer: function (feature, latlng) {
@@ -115,12 +116,12 @@
                       feature.properties.time
                     ).toLocaleString();
                     const popupContent = `
-    <div class="popup-content p-3">
-        <p><span class="fw-bold">Noise Level:</span> ${feature.properties.noise_level} dB</p>
-        <p><span class="fw-bold">Latest Time:</span> ${time}</p>
-        <button class="btn btn-primary btn-sm popup-btn" data-id="${feature.properties.id}">More Info</button>
-    </div>
-`;
+          <div class="popup-content p-3">
+              <p><span class="fw-bold">Noise Level:</span> ${feature.properties.noise_level} dB</p>
+              <p><span class="fw-bold">Latest Time:</span> ${time}</p>
+              <button class="btn btn-primary btn-sm popup-btn" data-id="${feature.properties.id}">More Info</button>
+          </div>
+      `;
                     layer.bindPopup(popupContent);
                     layer.moreInfoShow = false;
                     // Attach event listener for button
@@ -145,64 +146,83 @@
           });
         }
         ////////////
+        function calculateLAeq(laeq1minArray) {
+          if (laeq1minArray.length === 0) return 0;
+
+          // Compute sum of sound energy using reduce
+          const sum = laeq1minArray.reduce(
+            (acc, val) => acc + Math.pow(10, val / 10),
+            0
+          );
+
+          // Compute mean energy and LAeq,1h
+          return 10 * Math.log10(sum / 60);
+        }
 
         // Fetch additional information and update the popup
         function fetchAdditionalInfo(id, layer) {
           console.log(layer);
           $.ajax({
-            url: `http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:noise_spatial_table&outputFormat=application/json&CQL_FILTER=INTERSECTS(coordinate,POINT(${layer.feature.geometry.coordinates[0]} ${layer.feature.geometry.coordinates[1]}))&SORTBY=time`,
+            url: `http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:noise_spatial_table&outputFormat=application/json&CQL_FILTER=INTERSECTS(coordinate,POINT(${layer.feature.geometry.coordinates[0]} ${layer.feature.geometry.coordinates[1]}))&SORTBY=time+D&maxFeatures=60`,
             method: "GET",
             success: function (data) {
+              const laeq1minArray = new Array(data.features.length);
+              const labels = new Array(data.features.length);
+
+              let index = data.features.length - 1;
+              data.features.forEach((feature) => {
+                laeq1minArray[index] = feature.properties.noise_level;
+                labels[index] = new Date(
+                  feature.properties.time
+                ).toLocaleString();
+                index--;
+              });
+
               const additionalContent = `
-        <div class="popup-content container p-3">
-          <p>
-            <span class="title fw-bold">Noise Level:</span> 
-            <span class="badge bg-primary" style="font-size:0.7rem">${
-              data.features[0].properties.noise_level
-            } dB</span>
-          </p>
-          <p>
-            <span class="title fw-bold">Time:</span> 
-            <span class="text-muted">${new Date(
-              layer.feature.properties.time
-            ).toLocaleString()}</span>
-          </p>
+              <div class="popup-content container p-3">
+                <p>
+                  <span class="title fw-bold">Laeq : ${calculateLAeq(
+                    laeq1minArray
+                  )}</span>
+                  <span class="badge bg-primary" style="font-size:0.7rem">dB</span>
+                </p>
+                <p>
+                  <span class="title fw-bold">Time:</span>
+                  <span class="text-muted">${new Date(
+                    layer.feature.properties.time
+                  ).toLocaleString()}</span>
+                </p>
 
-          <div class="mb-3">
-            <label for="time-filter" class="form-label fw-bold">Select Time Range:</label>
-            <div class="input-group">
-              <input type="datetime-local" id="start-time" class="form-control me-2" />
-              <input type="datetime-local" id="end-time" class="form-control" />
-            </div>
-          </div>
+                <div class="mb-3">
+                  <label for="time-filter" class="form-label fw-bold">Select Time Range:</label>
+                  <div class="input-group">
+                    <input type="datetime-local" id="start-time" class="form-control me-2" />
+                    <input type="datetime-local" id="end-time" class="form-control" />
+                  </div>
+                </div>
 
-          <button id="update-chart" class="btn btn-primary w-100 my-2">Update Chart</button>
+                <button id="update-chart" class="btn btn-primary w-100 my-2">Update Chart</button>
 
-          <div class="my-3">
-            <canvas id="noiseChart" class="border rounded shadow-sm"></canvas>
-          </div>
+                <div class="my-3">
+                  <canvas id="noiseChart" class="border rounded shadow-sm"></canvas>
+                </div>
 
-          <div class="d-flex justify-content-between">
-            <button class="popup-btn-back btn btn-secondary">Back</button>
-            <button id="downloadChart" class="btn btn-success">Download Chart</button>
-          </div>
-        </div>
-      `;
-              //layer.setPopupContent(additionalContent).openPopup();
+                <div class="d-flex justify-content-between">
+                  <button class="popup-btn-back btn btn-secondary">Back</button>
+                  <button id="downloadChart" class="btn btn-success">Download Chart</button>
+                </div>
+              </div>
+            `;
+
               layer.bindPopup(additionalContent);
               layer.moreInfoShow = true;
-              async function createChart(features, chartId) {
-                const ctx = document.getElementById(chartId).getContext("2d");
-                const labels = [];
-                const noiseLevels = [];
 
-                features.forEach((feature) => {
-                  labels.push(
-                    new Date(feature.properties.time).toLocaleString()
-                  );
-                  noiseLevels.push(feature.properties.noise_level);
-                });
+              // Optimize chart creation
+              setTimeout(() => {
+                const canvas = document.getElementById("noiseChart");
+                if (!canvas) return; // Prevent errors if popup closes before render
 
+                const ctx = canvas.getContext("2d");
                 layer.chartInstance = new Chart(ctx, {
                   type: "line",
                   data: {
@@ -210,7 +230,7 @@
                     datasets: [
                       {
                         label: "Noise Levels",
-                        data: noiseLevels,
+                        data: laeq1minArray,
                         borderColor: "rgba(75, 192, 192, 1)",
                         borderWidth: 2,
                         fill: false,
@@ -219,16 +239,11 @@
                   },
                   options: {
                     scales: {
-                      y: {
-                        beginAtZero: true,
-                      },
+                      y: { beginAtZero: true },
                     },
                   },
                 });
-              }
-              setTimeout(() => {
-                createChart(data.features, "noiseChart");
-              }, 300);
+              }, 200);
 
               // Update chart on time range change
               $("#update-chart").on("click", function () {
@@ -275,12 +290,12 @@
                   layer.feature.properties.time
                 ).toLocaleString();
                 const popupContent = `
-    <div class="popup-content p-3">
-        <p><span class="fw-bold">Noise Level:</span> ${layer.feature.properties.noise_level} dB</p>
-        <p><span class="fw-bold">Latest Time:</span> ${time}</p>
-        <button class="btn btn-primary btn-sm popup-btn" data-id="${layer.feature.properties.id}">More Info</button>
-    </div>
-`;
+          <div class="popup-content p-3">
+              <p><span class="fw-bold">Noise Level:</span> ${layer.feature.properties.noise_level} dB</p>
+              <p><span class="fw-bold">Latest Time:</span> ${time}</p>
+              <button class="btn btn-primary btn-sm popup-btn" data-id="${layer.feature.properties.id}">More Info</button>
+          </div>
+      `;
 
                 layer.closePopup();
                 layer.chartInstance.destroy();
@@ -304,22 +319,22 @@
         legend.onAdd = function () {
           var div = L.DomUtil.create("div", "legend");
           div.innerHTML = `
-  <div class="legend p-3 border rounded shadow-sm bg-light">
-    <h4 class="fw-bold mb-3">Noise Level Legend</h4>
-    <p class="d-flex align-items-center">
-      <span class="color-box me-2" style="background-color:#FF0000; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span> 
-      <span class="text-danger fw-bold">High (70+ dB)</span>
-    </p>
-    <p class="d-flex align-items-center">
-      <span class="color-box me-2" style="background-color:#FFA500; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span> 
-      <span class="text-warning fw-bold">Medium (50-69 dB)</span>
-    </p>
-    <p class="d-flex align-items-center">
-      <span class="color-box me-2" style="background-color:#008000; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span> 
-      <span class="text-success fw-bold">Low (below 50 dB)</span>
-    </p>
-  </div>
-`;
+        <div class="legend p-3 border rounded shadow-sm bg-light">
+          <h4 class="fw-bold mb-3">Noise Level Legend</h4>
+          <p class="d-flex align-items-center">
+            <span class="color-box me-2" style="background-color:#FF0000; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span>
+            <span class="text-danger fw-bold">High (70+ dB)</span>
+          </p>
+          <p class="d-flex align-items-center">
+            <span class="color-box me-2" style="background-color:#FFA500; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span>
+            <span class="text-warning fw-bold">Medium (50-69 dB)</span>
+          </p>
+          <p class="d-flex align-items-center">
+            <span class="color-box me-2" style="background-color:#008000; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span>
+            <span class="text-success fw-bold">Low (below 50 dB)</span>
+          </p>
+        </div>
+      `;
 
           return div;
         };
