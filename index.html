@@ -564,6 +564,51 @@
                         value > thresholdValue ? 6 : 4
                       );
 
+                      function downsampleLTTB(data, targetCount) {
+                        if (data.length <= targetCount) {
+                          return data; // No downsampling needed
+                        }
+
+                        const result = [];
+                        const bucketSize = data.length / targetCount;
+                        let lastIndex = data.length - 1;
+
+                        result.push(data[0]); // Always include the first point
+
+                        for (let i = 1; i < targetCount - 1; i++) {
+                          const start = Math.floor(i * bucketSize);
+                          const end = Math.floor((i + 1) * bucketSize);
+
+                          let maxArea = 0;
+                          let maxAreaPoint = data[start];
+
+                          // Find the point with the largest area
+                          for (let k = start; k < end; k++) {
+                            const area = Math.abs(
+                              (data[start].x - data[end].x) *
+                                (data[k].y - data[start].y) -
+                                (data[start].x - data[k].x) *
+                                  (data[end].y - data[start].y)
+                            );
+
+                            if (area > maxArea) {
+                              maxArea = area;
+                              maxAreaPoint = data[k];
+                            }
+                          }
+
+                          result.push(maxAreaPoint);
+                        }
+
+                        result.push(data[lastIndex]); // Always include the last point
+                        return result;
+                      }
+
+                      const targetPoints = 50; // Desired number of data points
+                      const downsampledData = downsampleLTTB(laeq1minArray, 20);
+
+                      console.log(laeq1minArray);
+                      console.log(downsampledData);
                       // Count the number of points above the threshold.
                       const aboveThresholdCount = laeq1minArray.filter(
                         (value) => value > thresholdValue
@@ -597,11 +642,14 @@
                       layer.chartInstance = new Chart(ctx, {
                         type: "line",
                         data: {
-                          labels: labels,
+                          labels: [
+                            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+                            16, 17, 18, 19, 20,
+                          ],
                           datasets: [
                             {
                               label: "Noise Levels",
-                              data: laeq1minArray,
+                              data: downsampledData,
                               borderColor: "rgba(75, 192, 192, 1)",
                               borderWidth: 2,
                               fill: false,
