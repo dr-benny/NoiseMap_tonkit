@@ -54,7 +54,11 @@
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.1.0"></script>
+
     <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.0/build/global/luxon.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
       rel="stylesheet"
@@ -141,22 +145,22 @@
                       feature.properties.time
                     ).toLocaleString();
                     const popupContent = `
-     
-          <div class="popup-content p-3 " style="width:20rem">
 
-<div style="font-size:1rem"> ID:1 | TonkitLab |
-  <i id="battery-icon" class="fa fa-battery-full" ></i>
-  <span id="battery-percentage" >100%</span>
-</div>
+                    <div class="popup-content p-3 " style="width:20rem">
 
-     
+          <div style="font-size:1rem"> ID:1 | TonkitLab |
+            <i id="battery-icon" class="fa fa-battery-full" ></i>
+            <span id="battery-percentage" >100%</span>
+          </div>
 
 
-              <p><span class="fw-bold">Noise Level:</span> ${feature.properties.noise_level} dB(A)</p>
-              <p><span class="fw-bold">Latest Time:</span> ${time}</p>
-                  <button style="margin-top:0.2rem;border-radius:1rem" class="btn btn-primary btn-sm popup-btn w-100 fw-bold" data-id="${feature.properties.id}">More Info <i class="fa-solid fa-eye"></i></button></div>
-        
-      `;
+
+
+                        <p><span class="fw-bold">Noise Level:</span> ${feature.properties.noise_level} dB(A)</p>
+                        <p><span class="fw-bold">Latest Time:</span> ${time}</p>
+                            <button style="margin-top:0.2rem;border-radius:1rem" class="btn btn-primary btn-sm popup-btn w-100 fw-bold" data-id="${feature.properties.id}">More Info <i class="fa-solid fa-eye"></i></button></div>
+
+                `;
                     layer.bindPopup(popupContent);
                     layer.moreInfoShow = false;
                     // Attach event listener for button
@@ -249,30 +253,30 @@
           return `${year}-${month}-${day}T${hours}:${minutes}`;
         }
         /*function updateBatteryIcon(batteryLevel) {
-  const batteryIcon = document.getElementById('battery-icon');
-  const batteryPercentage = document.getElementById('battery-percentage');
+            const batteryIcon = document.getElementById('battery-icon');
+            const batteryPercentage = document.getElementById('battery-percentage');
 
-  // Update the percentage text
-  batteryPercentage.textContent = `${batteryLevel}%`;
+            // Update the percentage text
+            batteryPercentage.textContent = `${batteryLevel}%`;
 
-  // Determine the appropriate battery icon class
-  let iconClass;
-  if (batteryLevel > 75) {
-    iconClass = 'fa-battery-full';
-  } else if (batteryLevel > 50) {
-    iconClass = 'fa-battery-three-quarters';
-  } else if (batteryLevel > 25) {
-    iconClass = 'fa-battery-half';
-  } else if (batteryLevel > 10) {
-    iconClass = 'fa-battery-quarter';
-  } else {
-    iconClass = 'fa-battery-empty';
-  }
+            // Determine the appropriate battery icon class
+            let iconClass;
+            if (batteryLevel > 75) {
+              iconClass = 'fa-battery-full';
+            } else if (batteryLevel > 50) {
+              iconClass = 'fa-battery-three-quarters';
+            } else if (batteryLevel > 25) {
+              iconClass = 'fa-battery-half';
+            } else if (batteryLevel > 10) {
+              iconClass = 'fa-battery-quarter';
+            } else {
+              iconClass = 'fa-battery-empty';
+            }
 
-  // Update the icon's class
-  batteryIcon.className = `fa ${iconClass}`;
-}
-         */
+            // Update the icon's class
+            batteryIcon.className = `fa ${iconClass}`;
+          }
+                   */
 
         // Fetch additional information and update the popup
         function fetchAdditionalInfo(id, layer) {
@@ -280,6 +284,7 @@
             url: `http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:noise_spatial_table&outputFormat=application/json&CQL_FILTER=INTERSECTS(coordinate,POINT(${layer.feature.geometry.coordinates[0]} ${layer.feature.geometry.coordinates[1]}))&SORTBY=time+D&maxFeatures=60`,
             method: "GET",
             success: function (data) {
+              console.log(data);
               const laeq1minArray = new Array(data.features.length);
               const labels = new Array(data.features.length);
 
@@ -293,70 +298,70 @@
               });
 
               const additionalContent = `
-<div id="battery-container" class="position-absolute badge bg-black" style="right:3rem;top:5.8rem">
-  <i id="battery-icon" class="fa fa-battery-full" style="font-size:1rem;"></i>
-  <span id="battery-percentage" style="font-size:1.2rem">100%</span>
-</div>
+          <div id="battery-container" class="position-absolute badge bg-black" style="right:3rem;top:5.8rem">
+            <i id="battery-icon" class="fa fa-battery-full" style="font-size:1rem;"></i>
+            <span id="battery-percentage" style="font-size:1.2rem">100%</span>
+          </div>
 
-              <div class="position-absolute bg-warning badge" style="right:2.5rem;top:2.6rem;font-size:1.4rem;color:black;border-radius:0.8rem;"> ID:1 | TonkitLab </div>
-              <div class="popup-content container p-3">
-                <div>
-                <p>
-                  <span class="h6 fw-bold text-secondary">LAeq 1hr: </span>
-                  <span class="h4 fw-bold"><i class="fa fa-microphone"></i> ${calculateLAeq(
-                    laeq1minArray
-                  )}
-                  </span>
-                  <span class="badge bg-primary" style="font-size:0.9rem;margin-left:0.2rem;">dB(A)</span>
-                </p>
-                </div>
-                
-
-  
-                <div class="mb-3 mt-5">
-                  <label for="time-filter" class="form-label fw-bold h6 text-secondary">Select Time Range:</label>
-          
-                  <div class="input-group row">
-<div class="col"><div class="p-1 badge bg-success mb-1 fw-bold"style="font-size:0.9rem;">START <i class="fa-solid fa-clock"></i></div></div>
-
-                    <div class="col"><div class="p-1 badge bg-danger mb-1 fw-bold"style="font-size:0.9rem;">END <i class="fa-solid fa-clock"></i></div></div>
+                        <div class="position-absolute bg-warning badge" style="right:2.5rem;top:2.6rem;font-size:1.4rem;color:black;border-radius:0.8rem;"> ID:1 | TonkitLab </div>
+                        <div class="popup-content container p-3">
+                          <div>
+                          <p>
+                            <span class="h6 fw-bold text-secondary">LAeq <span id="LaeqTypes">1hr<span>: </span>
+                            <span class="h4 fw-bold"><i class="fa fa-microphone"></i> <span id="LaeqValue">${calculateLAeq(
+                              laeq1minArray
+                            )}</span>
+                            </span>
+                            <span class="badge bg-primary" style="font-size:0.9rem;margin-left:0.2rem;">dB(A)</span>
+                          </p>
+                          </div>
 
 
-                    <div class="w-100"></div>
+
+                          <div class="mb-3 mt-5">
+                            <label for="time-filter" class="form-label fw-bold h6 text-secondary">Select Time Range:</label>
+
+                            <div class="input-group row">
+          <div class="col"><div class="p-1 badge bg-success mb-1 fw-bold"style="font-size:0.9rem;">START <i class="fa-solid fa-clock"></i></div></div>
+
+                              <div class="col"><div class="p-1 badge bg-danger mb-1 fw-bold"style="font-size:0.9rem;">END <i class="fa-solid fa-clock"></i></div></div>
 
 
-                  <div class="col">
-                   <input type="datetime-local" id="start-time" class="form-control me-2 " value="${formatDateForInput(
-                     new Date(data.features.pop().properties.time)
-                   )}"/>
-                   </div>
+                              <div class="w-100"></div>
 
-                    <div class="col">
-                    <input type="datetime-local" id="end-time" class="form-control me-2" value="${formatDateForInput(
-                      new Date(data.features[0].properties.time)
-                    )}"/>
-                   </div>
 
-                                         
-                  </div>
-                   
-                </div>
+                            <div class="col">
+                             <input type="datetime-local" id="start-time" class="form-control me-2 " value="${formatDateForInput(
+                               new Date(data.features.pop().properties.time)
+                             )}"/>
+                             </div>
 
-                <button id="update-chart" class="btn btn-primary w-100 my-2">Update Chart</button>
+                              <div class="col">
+                              <input type="datetime-local" id="end-time" class="form-control me-2" value="${formatDateForInput(
+                                new Date(data.features[0].properties.time)
+                              )}"/>
+                             </div>
 
-                <div class="my-3">
-                  <canvas id="noiseChart" class="border rounded shadow-sm"></canvas>
-                </div>
 
-                <div class="d-flex justify-content-between">
-                  <button class="popup-btn-back btn btn-secondary">Back</button>
-                  <div>
-                  <button id="downloadCSVButton" class="btn btn-primary" style="margin-right:0.5rem">Download CSV</button>
-                  <button id="downloadChart" class="btn btn-success">Download Chart</button>
-                  </div>
-                </div>
-              </div>
-            `;
+                            </div>
+
+                          </div>
+
+                          <button id="update-chart" class="btn btn-primary w-100 my-2">Update Chart</button>
+
+                          <div class="my-3">
+                            <canvas id="noiseChart" class="border rounded shadow-sm"></canvas>
+                          </div>
+
+                          <div class="d-flex justify-content-between">
+                            <button class="popup-btn-back btn btn-secondary">Back</button>
+                            <div>
+                            <button id="downloadCSVButton" class="btn btn-primary" style="margin-right:0.5rem">Download CSV</button>
+                            <button id="downloadChart" class="btn btn-success">Download Chart</button>
+                            </div>
+                          </div>
+                        </div>
+                      `;
 
               layer.bindPopup(additionalContent);
               layer.moreInfoShow = true;
@@ -423,6 +428,27 @@
                 options: {
                   responsive: true,
                   plugins: {
+                    zoom: {
+                      zoom: {
+                        wheel: {
+                          enabled: true,
+                        },
+                        pinch: {
+                          enabled: true,
+                        },
+                        mode: "xy",
+                      },
+                      limits: {
+                        x: {
+                          min: 0, // Set the minimum value for the x-axis
+                          max: 60, // Set the maximum value for the x-axis
+                        },
+                        y: {
+                          min: 0, // Set the minimum value for the y-axis
+                          max: 100, // Set the maximum value for the y-axis
+                        },
+                      },
+                    },
                     legend: {
                       display: true,
                       position: "top", // or 'bottom', 'left', 'right'
@@ -467,18 +493,196 @@
                 },
               });
               // Update chart on time range change
+              function toISOWithTimezone(date) {
+                const offset = -date.getTimezoneOffset();
+                const sign = offset >= 0 ? "+" : "-";
+                const pad = (num) =>
+                  String(Math.floor(Math.abs(num))).padStart(2, "0");
+                return (
+                  date.getFullYear() +
+                  "-" +
+                  pad(date.getMonth() + 1) +
+                  "-" +
+                  pad(date.getDate()) +
+                  "T" +
+                  pad(date.getHours()) +
+                  ":" +
+                  pad(date.getMinutes()) +
+                  ":" +
+                  pad(date.getSeconds()) +
+                  sign +
+                  pad(offset / 60) +
+                  ":" +
+                  pad(offset % 60)
+                );
+              }
               $("#update-chart").on("click", function () {
                 const startTime = $("#start-time").val();
                 const endTime = $("#end-time").val();
                 if (startTime && endTime) {
-                  const filteredData = data.features.filter((feature) => {
-                    const featureTime = new Date(feature.properties.time);
-                    return (
-                      featureTime >= new Date(startTime) &&
-                      featureTime <= new Date(endTime)
-                    );
+                  const startDate = new Date(startTime);
+                  const endDate = new Date(endTime);
+
+                  const startTimeFormatted = toISOWithTimezone(startDate);
+                  const endTimeFormatted = toISOWithTimezone(endDate);
+
+                  // Create a spatial filter based on the feature's coordinates
+                  const spatialFilter = `INTERSECTS(coordinate,POINT(${layer.feature.geometry.coordinates[0]} ${layer.feature.geometry.coordinates[1]}))`;
+
+                  // Create a time filter using BETWEEN
+                  const timeFilter = `time BETWEEN '${startTimeFormatted}' AND '${endTimeFormatted}'`;
+
+                  // Combine both filters using AND
+                  const combinedFilter = `${spatialFilter} AND ${timeFilter}`;
+                  console.log(combinedFilter);
+
+                  // Encode the filter string for the URL
+                  const url = `http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:noise_spatial_table&outputFormat=application/json&CQL_FILTER=${encodeURIComponent(
+                    combinedFilter
+                  )}&SORTBY=time`;
+
+                  $.ajax({
+                    url: url,
+                    method: "GET",
+                    success: function (data_update) {
+                      layer.chartInstance.destroy();
+                      layer.moreInfoShow = false;
+                      const laeq1minArray = data_update.features.map(
+                        (feature) => feature.properties.noise_level
+                      );
+                      const labels = data_update.features.map(
+                        (feature) => feature.properties.time
+                      );
+                      const thresholdValue = 50; // Set your desired threshold
+                      // Generate an array for point colors: red if above threshold, otherwise the default color.
+                      const pointColors = laeq1minArray.map((value) =>
+                        value > thresholdValue ? "red" : "rgba(75, 192, 192, 1)"
+                      );
+
+                      // Optionally, adjust point radii: larger if above threshold.
+                      const pointRadii = laeq1minArray.map((value) =>
+                        value > thresholdValue ? 6 : 4
+                      );
+
+                      // Count the number of points above the threshold.
+                      const aboveThresholdCount = laeq1minArray.filter(
+                        (value) => value > thresholdValue
+                      ).length;
+                      const countPlugin = {
+                        id: "countPlugin",
+                        afterDraw: (chart, args, options) => {
+                          const {
+                            ctx,
+                            chartArea: { top, left, right },
+                          } = chart;
+                          ctx.save();
+                          ctx.font = options.font || "16px sans-serif";
+                          ctx.fillStyle = options.color || "black";
+                          ctx.textAlign = "right";
+                          ctx.textBaseline = "top";
+                          const text = options.text || "";
+                          // Draw text at the top center of the chart area.
+                          ctx.fillText(text, right, top - 25);
+                          ctx.restore();
+                        },
+                      };
+
+                      // Register the custom plugin with Chart.js.
+                      Chart.register(countPlugin);
+
+                      const canvas = document.getElementById("noiseChart");
+                      if (!canvas) return; // Prevent errors if popup closes before render
+
+                      const ctx = canvas.getContext("2d");
+                      layer.chartInstance = new Chart(ctx, {
+                        type: "line",
+                        data: {
+                          labels: labels,
+                          datasets: [
+                            {
+                              label: "Noise Levels",
+                              data: laeq1minArray,
+                              borderColor: "rgba(75, 192, 192, 1)",
+                              borderWidth: 2,
+                              fill: false,
+                              pointStyle: "circle",
+
+                              pointBackgroundColor: pointColors,
+                              pointRadius: pointRadii,
+                            },
+                          ],
+                        },
+                        options: {
+                          responsive: true,
+                          plugins: {
+                            zoom: {
+                              zoom: {
+                                wheel: {
+                                  enabled: true,
+                                },
+                                pinch: {
+                                  enabled: true,
+                                },
+                                mode: "xy",
+                              },
+                              limits: {
+                                x: {
+                                  min: 0, // Set the minimum value for the x-axis
+                                  max: 60, // Set the maximum value for the x-axis
+                                },
+                                y: {
+                                  min: 0, // Set the minimum value for the y-axis
+                                  max: 100, // Set the maximum value for the y-axis
+                                },
+                              },
+                            },
+                            legend: {
+                              display: true,
+                              position: "top", // or 'bottom', 'left', 'right'
+                              labels: {
+                                // Enable point style in legend and set desired point shape
+                                usePointStyle: true,
+                                pointStyle: "circle",
+                                padding: 20,
+                                font: {
+                                  size: 14,
+                                },
+                                color: "#333",
+                              },
+                            },
+                            annotation: {
+                              annotations: {
+                                thresholdLine: {
+                                  type: "line",
+                                  yMin: thresholdValue,
+                                  yMax: thresholdValue,
+                                  borderColor: "red",
+                                  borderWidth: 2,
+                                  label: {
+                                    content: "Threshold",
+                                    enabled: true,
+                                    position: "end",
+                                    backgroundColor: "rgba(255, 0, 0, 0.8)",
+                                  },
+                                },
+                              },
+                            },
+                            // Configure the custom plugin to display the count
+                            countPlugin: {
+                              text: `Points above threshold: ${aboveThresholdCount}`,
+                              font: "bold 1rem sans-serif",
+                              color: "red",
+                            },
+                          },
+                          scales: {
+                            x: { display: false },
+                          },
+                        },
+                      });
+
+                      $("#LaeqValue").text(calculateLAeq(laeq1minArray));
+                    },
                   });
-                  createChart(filteredData, "noiseChart");
                 } else {
                   alert("Please select both start and end times.");
                 }
@@ -532,22 +736,22 @@
         legend.onAdd = function () {
           var div = L.DomUtil.create("div", "legend");
           div.innerHTML = `
-        <div class="legend p-3 border rounded shadow-sm bg-light">
-          <h4 class="fw-bold mb-3">Noise Level Legend</h4>
-          <p class="d-flex align-items-center">
-            <span class="color-box me-2" style="background-color:#FF0000; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span>
-            <span class="text-danger fw-bold">High (70+ dB)</span>
-          </p>
-          <p class="d-flex align-items-center">
-            <span class="color-box me-2" style="background-color:#FFA500; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span>
-            <span class="text-warning fw-bold">Medium (50-69 dB)</span>
-          </p>
-          <p class="d-flex align-items-center">
-            <span class="color-box me-2" style="background-color:#008000; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span>
-            <span class="text-success fw-bold">Low (below 50 dB)</span>
-          </p>
-        </div>
-      `;
+                  <div class="legend p-3 border rounded shadow-sm bg-light">
+                    <h4 class="fw-bold mb-3">Noise Level Legend</h4>
+                    <p class="d-flex align-items-center">
+                      <span class="color-box me-2" style="background-color:#FF0000; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span>
+                      <span class="text-danger fw-bold">High (70+ dB)</span>
+                    </p>
+                    <p class="d-flex align-items-center">
+                      <span class="color-box me-2" style="background-color:#FFA500; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span>
+                      <span class="text-warning fw-bold">Medium (50-69 dB)</span>
+                    </p>
+                    <p class="d-flex align-items-center">
+                      <span class="color-box me-2" style="background-color:#008000; width: 20px; height: 20px; display: inline-block; border-radius: 4px;"></span>
+                      <span class="text-success fw-bold">Low (below 50 dB)</span>
+                    </p>
+                  </div>
+                `;
 
           return div;
         };
