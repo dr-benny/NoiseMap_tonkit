@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sld:StyledLayerDescriptor version="1.0.0"
+  xmlns="http://www.opengis.net/sld"
+  xmlns:sld="http://www.opengis.net/sld"
+  xmlns:ogc="http://www.opengis.net/ogc">
+
+  <sld:NamedLayer>
+    <sld:Name>hex_005_e2f8 </sld:Name>
+    <sld:UserStyle>
+      <sld:Title>Hex bins colored by n with LAeq label</sld:Title>
+      <sld:FeatureTypeStyle>
+
+        <!-- Rule สำหรับ n 1–100 -->
+        <sld:Rule>
+          <sld:Title>n 1 – 100</sld:Title>
+          <ogc:Filter>
+            <ogc:And>
+              <ogc:PropertyIsGreaterThan>
+                <ogc:PropertyName>n</ogc:PropertyName>
+                <ogc:Literal>0</ogc:Literal>
+              </ogc:PropertyIsGreaterThan>
+              <ogc:PropertyIsLessThanOrEqualTo>
+                <ogc:PropertyName>n</ogc:PropertyName>
+                <ogc:Literal>100</ogc:Literal>
+              </ogc:PropertyIsLessThanOrEqualTo>
+            </ogc:And>
+          </ogc:Filter>
+          <sld:PolygonSymbolizer>
+            <sld:Fill>
+              <sld:CssParameter name="fill">#deebf7</sld:CssParameter>
+            </sld:Fill>
+            <sld:Stroke>
+              <sld:CssParameter name="stroke">#3182bd</sld:CssParameter>
+            </sld:Stroke>
+          </sld:PolygonSymbolizer>
+          <sld:TextSymbolizer>
+            <sld:Label>
+              <ogc:PropertyName>laeq</ogc:PropertyName>
+            </sld:Label>
+            <sld:Font>
+              <sld:CssParameter name="font-family">Arial</sld:CssParameter>
+              <sld:CssParameter name="font-size">10</sld:CssParameter>
+              <sld:CssParameter name="font-weight">Bold</sld:CssParameter>
+            </sld:Font>
+            <sld:LabelPlacement>
+              <sld:PointPlacement>
+                <sld:AnchorPoint>
+                  <sld:AnchorPointX>0.5</sld:AnchorPointX>
+                  <sld:AnchorPointY>0.5</sld:AnchorPointY>
+                </sld:AnchorPoint>
+              </sld:PointPlacement>
+            </sld:LabelPlacement>
+            <sld:Fill>
+              <sld:CssParameter name="fill">#000000</sld:CssParameter>
+            </sld:Fill>
+            <sld:VendorOption name="conflictResolution">false</sld:VendorOption>
+            <sld:VendorOption name="partials">false</sld:VendorOption>
+            <sld:VendorOption name="group">no</sld:VendorOption>
+            <sld:VendorOption name="labelAllGroup">false</sld:VendorOption>
+            <sld:VendorOption name="removeOverlaps">true</sld:VendorOption>
+            <sld:VendorOption name="allowOverruns">false</sld:VendorOption>
+          </sld:TextSymbolizer>
+        </sld:Rule>
+
+        <!-- Rule สำหรับ n 101–1000 -->
+        <sld:Rule>
+          <sld:Title>n 101 – 1,000</sld:Title>
+          <ogc:Filter>
+            <ogc:And>
+              <ogc:PropertyIsGreaterThan>
+                <ogc:PropertyName>n</ogc:PropertyName>
+                <ogc:Literal>100</ogc:Literal>
+              </ogc:PropertyIsGreaterThan>
+              <ogc:PropertyIsLessThanOrEqualTo>
+                <ogc:PropertyName>n</ogc:PropertyName>
+                <ogc:Literal>1000</ogc:Literal>
+              </ogc:PropertyIsLessThanOrEqualTo>
+            </ogc:And>
+          </ogc:Filter>
+          <sld:PolygonSymbolizer>
+            <sld:Fill>
+              <sld:CssParameter name="fill">#9ecae1</sld:CssParameter>
+            </sld:Fill>
+            <sld:Stroke>
+              <sld:CssParameter name="stroke">#3182bd</sld:CssParameter>
+            </sld:Stroke>
+          </sld:PolygonSymbolizer>
+          <sld:TextSymbolizer>
+            <sld:Label>
+              <ogc:PropertyName>laeq</ogc:PropertyName>
+            </sld:Label>
+            <sld:Font>
+              <sld:CssParameter name="font-family">Arial</sld:CssParameter>
+              <sld:CssParameter name="font-size">10</sld:CssParameter>
+              <sld:CssParameter name="font-weight">Bold</sld:CssParameter>
+            </sld:Font>
+            <sld:LabelPlacement>
+              <sld:PointPlacement>
+                <sld:AnchorPoint>
+                  <sld:AnchorPointX>0.5</sld:AnchorPointX>
+                  <sld:AnchorPointY>0.5</sld:AnchorPointY>
+                </sld:AnchorPoint>
+              </sld:PointPlacement>
+            </sld:LabelPlacement>
+            <sld:Fill>
+              <sld:CssParameter name="fill">#000000</sld:CssParameter>
+            </sld:Fill>
+            <sld:VendorOption name="conflictResolution">false</sld:VendorOption>
+            <sld:VendorOption name="partials">false</sld:VendorOption>
+            <sld:VendorOption name="group">no</sld:VendorOption>
+            <sld:VendorOption name="labelAllGroup">false</sld:VendorOption>
+            <sld:VendorOption name="removeOverlaps">true</sld:VendorOption>
+            <sld:VendorOption name="allowOverruns">false</sld:VendorOption>
+          </sld:TextSymbolizer>
+        </sld:Rule>
+
+        <!-- Rule สำหรับ n 1001–10000 -->
+        <sld:Rule>
+          <sld:Title>n 1,001 – 10,000</sld:Title>
+          <ogc:Filter>
+            <ogc:And>
+              <ogc:PropertyIsGreaterThan>
+                <ogc:PropertyName>n</ogc:PropertyName>
+                <ogc:Literal>1000</ogc:Literal>
+              </ogc:PropertyIsGreaterThan>
+              <ogc:PropertyIsLessThanOrEqualTo>
+                <ogc:PropertyName>n</ogc:PropertyName>
+                <ogc:Literal>10000</ogc:Literal>
+              </ogc:PropertyIsLessThanOrEqualTo>
+            </ogc:And>
+          </ogc:Filter>
+          <sld:PolygonSymbolizer>
+            <sld:Fill>
+              <sld:CssParameter name="fill">#4292c6</sld:CssParameter>
+            </sld:Fill>
+            <sld:Stroke>
+              <sld:CssParameter name="stroke">#08519c</sld:CssParameter>
+            </sld:Stroke>
+          </sld:PolygonSymbolizer>
+          <sld:TextSymbolizer>
+            <sld:Label>
+              <ogc:PropertyName>laeq</ogc:PropertyName>
+            </sld:Label>
+            <sld:Font>
+              <sld:CssParameter name="font-family">Arial</sld:CssParameter>
+              <sld:CssParameter name="font-size">10</sld:CssParameter>
+              <sld:CssParameter name="font-weight">Bold</sld:CssParameter>
+            </sld:Font>
+            <sld:LabelPlacement>
+              <sld:PointPlacement>
+                <sld:AnchorPoint>
+                  <sld:AnchorPointX>0.5</sld:AnchorPointX>
+                  <sld:AnchorPointY>0.5</sld:AnchorPointY>
+                </sld:AnchorPoint>
+              </sld:PointPlacement>
+            </sld:LabelPlacement>
+            <sld:Fill>
+              <sld:CssParameter name="fill">#000000</sld:CssParameter>
+            </sld:Fill>
+            <sld:VendorOption name="conflictResolution">false</sld:VendorOption>
+            <sld:VendorOption name="partials">false</sld:VendorOption>
+            <sld:VendorOption name="group">no</sld:VendorOption>
+          </sld:TextSymbolizer>
+        </sld:Rule>
+
+        <!-- Rule สำหรับ n > 10000 -->
+        <sld:Rule>
+          <sld:Title>n > 10,000</sld:Title>
+          <ogc:Filter>
+            <ogc:PropertyIsGreaterThan>
+              <ogc:PropertyName>n</ogc:PropertyName>
+              <ogc:Literal>10000</ogc:Literal>
+            </ogc:PropertyIsGreaterThan>
+          </ogc:Filter>
+          <sld:PolygonSymbolizer>
+            <sld:Fill>
+              <sld:CssParameter name="fill">#08306b</sld:CssParameter>
+            </sld:Fill>
+            <sld:Stroke>
+              <sld:CssParameter name="stroke">#041f3d</sld:CssParameter>
+            </sld:Stroke>
+          </sld:PolygonSymbolizer>
+          <sld:TextSymbolizer>
+            <sld:Label>
+              <ogc:PropertyName>laeq</ogc:PropertyName>
+            </sld:Label>
+            <sld:Font>
+              <sld:CssParameter name="font-family">Arial</sld:CssParameter>
+              <sld:CssParameter name="font-size">10</sld:CssParameter>
+              <sld:CssParameter name="font-weight">Bold</sld:CssParameter>
+            </sld:Font>
+            <sld:LabelPlacement>
+              <sld:PointPlacement>
+                <sld:AnchorPoint>
+                  <sld:AnchorPointX>0.5</sld:AnchorPointX>
+                  <sld:AnchorPointY>0.5</sld:AnchorPointY>
+                </sld:AnchorPoint>
+              </sld:PointPlacement>
+            </sld:LabelPlacement>
+            <sld:Fill>
+              <sld:CssParameter name="fill">#000000</sld:CssParameter>
+            </sld:Fill>
+            <sld:VendorOption name="conflictResolution">false</sld:VendorOption>
+            <sld:VendorOption name="partials">false</sld:VendorOption>
+            <sld:VendorOption name="group">no</sld:VendorOption>
+            <sld:VendorOption name="labelAllGroup">false</sld:VendorOption>
+            <sld:VendorOption name="removeOverlaps">true</sld:VendorOption>
+            <sld:VendorOption name="allowOverruns">false</sld:VendorOption>
+          </sld:TextSymbolizer>
+        </sld:Rule>
+
+      </sld:FeatureTypeStyle>
+    </sld:UserStyle>
+  </sld:NamedLayer>
+</sld:StyledLayerDescriptor>
+

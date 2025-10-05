@@ -58,6 +58,8 @@
     <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.0/build/global/luxon.min.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <!-- เพิ่มใน <head> -->
+    <script src="https://unpkg.com/leaflet.nontiledlayer@1.0.8/dist/NonTiledLayer.js"></script>
 
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
@@ -93,17 +95,38 @@
             fillOpacity: 0.3, // Adjust darkness (0.0 = fully transparent, 1.0 = fully black)
           }
         );
-        var hexLayer = L.tileLayer.wms(
-          "http://localhost:8080/geoserver/it.geosolutions/wms",
-          {
-            layers: "it.geosolutions:hex_005_e2f8", // workspace:layer
-            styles: "hex", // style ที่ทำสีไล่
-            format: "image/png",
-            transparent: true,
-            opacity: 0.8, // โปร่งใส (0.0 = มองทะลุ, 1.0 = ทึบ)
-            attribution: "NoiseMap Hex",
+        let hexOverlay;
+
+        function updateHexLayer() {
+          const bounds = map.getBounds();
+          const size = map.getSize();
+
+          const wmsUrl =
+            "http://localhost:8080/geoserver/it.geosolutions/wms?" +
+            L.Util.getParamString({
+              service: "WMS",
+              version: "1.1.0",
+              request: "GetMap",
+              layers: "it.geosolutions:hex_005_e2f8",
+              styles: "hex",
+              format: "image/png",
+              transparent: true,
+              srs: "EPSG:4326",
+              bbox: bounds.toBBoxString(),
+              width: size.x,
+              height: size.y,
+              tiled: false,
+              TILED: false,
+            });
+
+          if (hexOverlay) {
+            map.removeLayer(hexOverlay);
           }
-        );
+
+          hexOverlay = L.imageOverlay(wmsUrl, bounds, { opacity: 0.9 }).addTo(
+            map
+          );
+        }
 
         var satelliteLayer = L.tileLayer(
           "https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
@@ -120,7 +143,10 @@
           layers: [terrainLayer, blackOverlay],
         }).setView([13.756111, 100.516667], 13);
 
-        hexLayer.addTo(map);
+        map.on("moveend zoomend", updateHexLayer);
+        updateHexLayer();
+
+        //hexLayer.addTo(map);
         // Determine marker color based on noise level
         function getMarkerColor(noiseLevel) {
           if (noiseLevel > 70) return "red";
