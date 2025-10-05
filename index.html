@@ -93,6 +93,17 @@
             fillOpacity: 0.3, // Adjust darkness (0.0 = fully transparent, 1.0 = fully black)
           }
         );
+        var hexLayer = L.tileLayer.wms(
+          "http://localhost:8080/geoserver/it.geosolutions/wms",
+          {
+            layers: "it.geosolutions:hex_005_e2f8", // workspace:layer
+            styles: "hex", // style ที่ทำสีไล่
+            format: "image/png",
+            transparent: true,
+            opacity: 0.8, // โปร่งใส (0.0 = มองทะลุ, 1.0 = ทึบ)
+            attribution: "NoiseMap Hex",
+          }
+        );
 
         var satelliteLayer = L.tileLayer(
           "https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
@@ -109,6 +120,7 @@
           layers: [terrainLayer, blackOverlay],
         }).setView([13.756111, 100.516667], 13);
 
+        hexLayer.addTo(map);
         // Determine marker color based on noise level
         function getMarkerColor(noiseLevel) {
           if (noiseLevel > 70) return "red";

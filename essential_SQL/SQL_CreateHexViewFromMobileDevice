@@ -1,0 +1,28 @@
+CREATE OR REPLACE VIEW noise_hex_view AS
+WITH bounds AS (
+    SELECT 
+        st_extent(noise_spatial_table.coordinate)::geometry AS g
+    FROM noise_spatial_table
+    WHERE noise_spatial_table.device_id = 'e2f89d1d-8265-45b8-a31d-298b7e5a4e70'::uuid
+), 
+grid AS (
+    SELECT 
+        st_setsrid((st_hexagongrid(0.05::double precision, bounds.g)).geom, 4326) AS geom
+    FROM bounds
+)
+SELECT 
+    row_number() OVER () AS hex_id,
+    g.geom,
+    count(n.*) AS n,
+    min(n."time") AS t_min,
+    max(n."time") AS t_max,
+    10::numeric * (
+        ln(avg(power(10.0::double precision, n.noise_level / 10.0::double precision))) 
+        / ln(10.0)::double precision
+    )::numeric(10,2) AS laeq
+FROM grid g
+LEFT JOIN noise_spatial_table n 
+    ON n.device_id = 'e2f89d1d-8265-45b8-a31d-298b7e5a4e70'::uuid
+   AND st_intersects(g.geom, n.coordinate)
+GROUP BY g.geom;
+
