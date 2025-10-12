@@ -1,0 +1,21 @@
+<wfs:GetFeature service="WFS" version="1.1.0"
+  xmlns:wfs="http://www.opengis.net/wfs"
+  xmlns:gml="http://www.opengis.net/gml"
+  xmlns:ogc="http://www.opengis.net/ogc">
+  <wfs:Query typeName="it.geosolutions:noise_spatial_table">
+    <ogc:Filter>
+      <ogc:Intersects>
+        <ogc:PropertyName>coordinate</ogc:PropertyName>
+        <gml:Polygon srsName="EPSG:4326">
+          <gml:outerBoundaryIs>
+            <gml:LinearRing>
+              <gml:posList>
+                100.45 13.76980392 100.475 13.72650265 100.525 13.72650265 100.55 13.76980392 100.525 13.81310519 100.475 13.81310519 100.45 13.76980392
+              </gml:posList>
+            </gml:LinearRing>
+          </gml:outerBoundaryIs>
+        </gml:Polygon>
+      </ogc:Intersects>
+    </ogc:Filter>
+  </wfs:Query>
+</wfs:GetFeature>

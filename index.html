@@ -145,6 +145,87 @@
 
         map.on("moveend zoomend", updateHexLayer);
         updateHexLayer();
+        map.on("click", async (e) => {
+          const lat = e.latlng.lat;
+          const lng = e.latlng.lng;
+          try {
+            // 1️⃣ เรียก GetFeatureInfo เพื่อดูว่าอยู่ใน hex ไหน
+            const wmsUrl =
+              "http://localhost:8080/geoserver/it.geosolutions/wms?";
+            const layer = "it.geosolutions:hex_005_e2f8";
+            const bbox = `${lng - 0.001},${lat - 0.001},${lng + 0.001},${
+              lat + 0.001
+            }`;
+
+            const getFeatureInfoUrl =
+              `${wmsUrl}?service=WMS&version=1.1.1&request=GetFeatureInfo` +
+              `&layers=${layer}` +
+              `&query_layers=${layer}` +
+              `&info_format=application/json` +
+              `&x=50&y=50&srs=EPSG:4326&width=101&height=101&bbox=${bbox}`;
+
+            const res = await fetch(getFeatureInfoUrl);
+            if (!res.ok)
+              throw new Error(`GetFeatureInfo failed: ${res.status}`);
+
+            const json = await res.json();
+            if (!json.features || json.features.length === 0) {
+              console.warn("No hex found at clicked point");
+              return;
+            }
+
+            const feature = json.features[0];
+            // แปลงพิกัดเป็น "lng lat lng lat ..." สำหรับ gml:posList
+            const coordsList = feature.geometry.coordinates[0]
+              .map((c) => `${c[0]} ${c[1]}`) // เปลี่ยนกลับเป็น lng lat
+              .join(" ");
+
+            console.log("Hex coordinates:", coordsList);
+
+            // 2️⃣ ใช้ geometry ของ hex ไป query raw_data ด้วย WFS
+            const wfsUrl = "http://localhost:3000/wfs-proxy";
+            const wfsXml = `
+<wfs:GetFeature service="WFS" version="1.1.0" maxFeatures="1000" outputFormat="application/json"
+  xmlns:wfs="http://www.opengis.net/wfs"
+  xmlns:gml="http://www.opengis.net/gml"
+  xmlns:ogc="http://www.opengis.net/ogc">
+  <wfs:Query typeName="it.geosolutions:noise_spatial_table">
+    <ogc:Filter>
+      <ogc:Intersects>
+        <ogc:PropertyName>coordinate</ogc:PropertyName>
+        <gml:Polygon srsName="EPSG:4326">
+          <gml:exterior>
+            <gml:LinearRing>
+              <gml:posList>${coordsList}</gml:posList>
+            </gml:LinearRing>
+          </gml:exterior>
+        </gml:Polygon>
+      </ogc:Intersects>
+    </ogc:Filter>
+    <ogc:SortBy>
+      <ogc:SortProperty>
+        <ogc:PropertyName>time</ogc:PropertyName>
+        <ogc:SortOrder>DESC</ogc:SortOrder>
+      </ogc:SortProperty>
+    </ogc:SortBy>
+  </wfs:Query>
+</wfs:GetFeature>
+`;
+
+            const res2 = await fetch(wfsUrl, {
+              method: "POST",
+              headers: { "Content-Type": "text/xml" },
+              body: wfsXml.trim(),
+            });
+
+            if (!res2.ok) throw new Error(`WFS query failed: ${res2.status}`);
+
+            const data = await res2.text();
+            console.log("WFS response:", data);
+          } catch (err) {
+            console.error("Error:", err);
+          }
+        });
 
         //hexLayer.addTo(map);
         // Determine marker color based on noise level

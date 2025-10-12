@@ -17,6 +17,8 @@
   },
   "homepage": "https://github.com/dr-benny/NoiseMap_tonkit#readme",
   "dependencies": {
-    "chartjs-plugin-responsive-downsample": "^1.1.3"
+    "chartjs-plugin-responsive-downsample": "^1.1.3",
+    "express": "^5.1.0",
+    "node-fetch": "^3.3.2"
   }
 }
