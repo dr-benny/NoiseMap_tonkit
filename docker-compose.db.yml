@@ -38,8 +38,10 @@ services:
       EXTRACT_DIR: /app/Thailand_data
       DIRECTORY: /app/Thailand_data
     volumes:
-      - ./Thailand_data:/app/Thailand_data
       - ./Thailand.zip:/app/Thailand.zip
+      - ./Thailand_data:/app/Thailand_data
+      - ./upload_data.sh:/app/upload_data.sh       
+      - ./create_hex_view.sh:/app/create_hex_view.sh 
     networks:
       - gis-net
     depends_on:
