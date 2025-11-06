@@ -2,33 +2,48 @@
 
 ## Quick Start
 
-### 1. Start Database
+### Automatic Setup (Recommended)
 
 ```bash
 # Make sure gis-net network exists
 docker network create gis-net 2>/dev/null || true
 
-# Start database
+# Start database and auto-upload data
+# This will:
+# - Start PostgreSQL/PostGIS database
+# - Wait for database to be ready
+# - Download Thailand.zip automatically
+# - Extract and upload all *.points.geojson files
+# - Create HEX view automatically
 docker-compose -f docker-compose.db.yml up -d
+
+# Check upload progress
+docker logs -f NoiseMap_Tonkit_Upload
 ```
 
-### 2. Upload Data
+### Manual Setup (Alternative)
+
+If you prefer to run scripts manually:
 
 ```bash
-# This will:
-# - Download Thailand.zip from https://data.noise-planet.org/dump/Thailand.zip
-# - Extract and upload all *.points.geojson files to database
-# - Automatically get device_id from devices table
+# 1. Start database only
+docker-compose -f docker-compose.db.yml up -d postgres
+
+# 2. Upload data manually
 ./upload_data.sh
+
+# 3. Create HEX view manually
+./create_hex_view.sh
 ```
 
-### 3. Create HEX View
+### Re-run Upload
+
+If you need to re-upload data:
 
 ```bash
-# This will:
-# - Read device_id from database (devices table where name='mobile')
-# - Create HEX view with calculated LAeq values
-./create_hex_view.sh
+# Remove upload container and re-run
+docker-compose -f docker-compose.db.yml rm -f upload-data
+docker-compose -f docker-compose.db.yml up upload-data
 ```
 
 ## Database Structure

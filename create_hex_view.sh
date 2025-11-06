@@ -2,11 +2,11 @@
 set -euo pipefail
 
 # === Vars ===
-DB_NAME="noisemap_tonkit_db"
-DB_USER="postgres"
-DB_PASSWORD="postgres"
+DB_NAME="${DB_NAME:-noisemap_tonkit_db}"
+DB_USER="${DB_USER:-postgres}"
+DB_PASSWORD="${DB_PASSWORD:-postgres}"
 DB_HOST="${DB_HOST:-NoiseMap_Tonkit_DB}"
-DB_PORT="5432"
+DB_PORT="${DB_PORT:-5432}"
 VIEW_NAME="hex_005_e2f8"
 HEX_SIZE="0.05"
 

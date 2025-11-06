@@ -1,0 +1,24 @@
+FROM ubuntu:22.04
+
+# Avoid interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    gdal-bin \
+    postgresql-client \
+    wget \
+    curl \
+    unzip \
+    bash \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy scripts
+COPY upload_data.sh create_hex_view.sh ./
+RUN chmod +x upload_data.sh create_hex_view.sh
+
+# Default command (can be overridden)
+CMD ["./upload_data.sh"]
+

@@ -2,16 +2,16 @@
 set -euo pipefail
 
 # === Vars ===
-DB_NAME="noisemap_tonkit_db"
-DB_USER="postgres"
-DB_PASSWORD="postgres"
+DB_NAME="${DB_NAME:-noisemap_tonkit_db}"
+DB_USER="${DB_USER:-postgres}"
+DB_PASSWORD="${DB_PASSWORD:-postgres}"
 DB_HOST="${DB_HOST:-NoiseMap_Tonkit_DB}"
-DB_PORT="5432"
+DB_PORT="${DB_PORT:-5432}"
 TABLE_NAME="noise_spatial_table"
 DATA_URL="https://data.noise-planet.org/dump/Thailand.zip"
-ZIP_FILE="Thailand.zip"
-EXTRACT_DIR="Thailand_data"
-DIRECTORY="${EXTRACT_DIR}"     # โฟลเดอร์ไฟล์ *.points.geojson
+ZIP_FILE="${ZIP_FILE:-Thailand.zip}"
+EXTRACT_DIR="${EXTRACT_DIR:-Thailand_data}"
+DIRECTORY="${DIRECTORY:-${EXTRACT_DIR}}"     # โฟลเดอร์ไฟล์ *.points.geojson
 
 export PGPASSWORD="$DB_PASSWORD"
 
@@ -38,14 +38,20 @@ fi
 if [[ ! -f "$ZIP_FILE" ]]; then
     echo "📥 Downloading Thailand.zip from $DATA_URL..."
     if command -v wget &> /dev/null; then
-        wget -O "$ZIP_FILE" "$DATA_URL"
+        wget -O "$ZIP_FILE" "$DATA_URL" || {
+            echo "⚠️  Download failed, continuing with existing files if any..."
+        }
     elif command -v curl &> /dev/null; then
-        curl -L -o "$ZIP_FILE" "$DATA_URL"
+        curl -L -o "$ZIP_FILE" "$DATA_URL" || {
+            echo "⚠️  Download failed, continuing with existing files if any..."
+        }
     else
         echo "❌ ERROR: Neither wget nor curl found. Please install one of them."
         exit 1
     fi
-    echo "✅ Download completed"
+    if [[ -f "$ZIP_FILE" ]]; then
+        echo "✅ Download completed"
+    fi
 else
     echo "✅ Using existing $ZIP_FILE"
 fi

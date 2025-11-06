@@ -23,6 +23,51 @@ services:
       timeout: 5s
       retries: 5
 
+  upload-data:
+    build:
+      context: .
+      dockerfile: Dockerfile.upload
+    container_name: NoiseMap_Tonkit_Upload
+    environment:
+      DB_NAME: noisemap_tonkit_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: NoiseMap_Tonkit_DB
+      DB_PORT: "5432"
+      ZIP_FILE: /app/Thailand.zip
+      EXTRACT_DIR: /app/Thailand_data
+      DIRECTORY: /app/Thailand_data
+    volumes:
+      - ./Thailand_data:/app/Thailand_data
+      - ./Thailand.zip:/app/Thailand.zip
+    networks:
+      - gis-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "=========================================="
+        echo "  Starting automatic data upload..."
+        echo "=========================================="
+        echo "Waiting for database to be fully ready..."
+        sleep 5
+        echo ""
+        if ./upload_data.sh; then
+          echo ""
+          echo "=========================================="
+          echo "  Creating HEX view..."
+          echo "=========================================="
+          ./create_hex_view.sh
+          echo ""
+          echo "✅ All done! Data uploaded and HEX view created."
+        else
+          echo "❌ Upload failed!"
+          exit 1
+        fi
+
 volumes:
   postgres_data:
 
