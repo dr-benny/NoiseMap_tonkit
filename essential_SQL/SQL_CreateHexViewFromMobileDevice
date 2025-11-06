@@ -1,9 +1,14 @@
+-- Create HEX view that reads device_id from devices table
+-- Usage: This view will automatically use the device with name='mobile'
 CREATE OR REPLACE VIEW noise_hex_view AS
-WITH bounds AS (
+WITH device_uuid AS (
+    SELECT id FROM public.devices WHERE name = 'mobile' LIMIT 1
+),
+bounds AS (
     SELECT 
         st_extent(noise_spatial_table.coordinate)::geometry AS g
-    FROM noise_spatial_table
-    WHERE noise_spatial_table.device_id = 'e2f89d1d-8265-45b8-a31d-298b7e5a4e70'::uuid
+    FROM noise_spatial_table, device_uuid
+    WHERE noise_spatial_table.device_id = device_uuid.id
 ), 
 grid AS (
     SELECT 
@@ -21,8 +26,9 @@ SELECT
         / ln(10.0)::double precision
     )::numeric(10,2) AS laeq
 FROM grid g
+CROSS JOIN device_uuid
 LEFT JOIN noise_spatial_table n 
-    ON n.device_id = 'e2f89d1d-8265-45b8-a31d-298b7e5a4e70'::uuid
+    ON n.device_id = device_uuid.id
    AND st_intersects(g.geom, n.coordinate)
 GROUP BY g.geom;
 
