@@ -149,9 +149,28 @@ export default function NoiseMap() {
     try {
       setShowChart(true); // Show loading immediately
       
-      const url = `http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:noise_spatial_table&outputFormat=application/json&CQL_FILTER=INTERSECTS(coordinate,POINT(${lng} ${lat}))&SORTBY=time+D&maxFeatures=30`;
+      // Use API proxy instead of direct GeoServer URL
+      const wfsRequest = `<?xml version="1.0" encoding="UTF-8"?>
+<wfs:GetFeature service="WFS" version="1.0.0" xmlns:wfs="http://www.opengis.net/wfs" xmlns:ogc="http://www.opengis.net/ogc" xmlns:gml="http://www.opengis.net/gml">
+  <wfs:Query typeName="it.geosolutions:noise_spatial_table">
+    <ogc:Filter>
+      <ogc:Intersects>
+        <ogc:PropertyName>coordinate</ogc:PropertyName>
+        <gml:Point>
+          <gml:coordinates>${lng},${lat}</gml:coordinates>
+        </gml:Point>
+      </ogc:Intersects>
+    </ogc:Filter>
+  </wfs:Query>
+</wfs:GetFeature>`;
       
-      const response = await fetch(url);
+      const response = await fetch('/api/wfs-proxy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml',
+        },
+        body: wfsRequest,
+      });
       const data = await response.json();
       
       if (data.features && data.features.length > 0) {
@@ -217,8 +236,9 @@ export default function NoiseMap() {
           const bounds = map.getBounds();
           const size = map.getSize();
 
+          // Use API proxy instead of direct GeoServer URL
           const wmsUrl =
-            "http://localhost:8080/geoserver/it.geosolutions/wms?" +
+            "/api/geoserver-proxy/geoserver/it.geosolutions/wms?" +
             L.Util.getParamString({
               service: "WMS",
               version: "1.1.0",
@@ -251,7 +271,8 @@ export default function NoiseMap() {
           
           try {
             // GetFeatureInfo to find which hex was clicked
-            const wmsUrl = "http://localhost:8080/geoserver/it.geosolutions/wms?";
+            // Use API proxy instead of direct GeoServer URL
+            const wmsUrl = "/api/geoserver-proxy/geoserver/it.geosolutions/wms?";
             const layer = "it.geosolutions:hex_005_e2f8";
             
             // Get current map bounds for proper bbox
@@ -602,9 +623,19 @@ export default function NoiseMap() {
 
         const markers = L.layerGroup().addTo(map);
 
-        fetch(
-          "http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:current_noise&outputFormat=application/json"
-        )
+        // Use API proxy instead of direct GeoServer URL
+        const wfsRequest = `<?xml version="1.0" encoding="UTF-8"?>
+<wfs:GetFeature service="WFS" version="1.0.0" xmlns:wfs="http://www.opengis.net/wfs">
+  <wfs:Query typeName="it.geosolutions:current_noise"/>
+</wfs:GetFeature>`;
+        
+        fetch('/api/wfs-proxy', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/xml',
+          },
+          body: wfsRequest,
+        })
           .then((res) => res.json())
           .then((data: { features: NoiseFeature[] }) => {
             if (data.features) {

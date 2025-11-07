@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, memo } from "react";
 
 interface ChartPanelProps {
   isOpen: boolean;
@@ -23,7 +23,7 @@ interface ChartPanelProps {
 
 type LaeqType = 'Laeq1h' | 'Laeq24h' | 'Lday' | 'Levening' | 'Lnight';
 
-export default function ChartPanel({ isOpen, data, onClose, locationId, noiseLevel, coordinates, laeqResult: propLaeqResult }: ChartPanelProps) {
+function ChartPanel({ isOpen, data, onClose, locationId, noiseLevel, coordinates, laeqResult: propLaeqResult }: ChartPanelProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartInstanceRef = useRef<any>(null);
   const [selectedDate, setSelectedDate] = useState("");
@@ -250,9 +250,28 @@ export default function ChartPanel({ isOpen, data, onClose, locationId, noiseLev
       setIsFetchingMore(true);
       
       // Fetch 1440 records (24 hours = 1440 minutes)
-      const url = `http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:noise_spatial_table&outputFormat=application/json&CQL_FILTER=INTERSECTS(coordinate,POINT(${coordinates[1]} ${coordinates[0]}))&SORTBY=time+D&maxFeatures=1440`;
+      // Use API proxy instead of direct GeoServer URL
+      const wfsRequest = `<?xml version="1.0" encoding="UTF-8"?>
+<wfs:GetFeature service="WFS" version="1.0.0" xmlns:wfs="http://www.opengis.net/wfs" xmlns:ogc="http://www.opengis.net/ogc" xmlns:gml="http://www.opengis.net/gml">
+  <wfs:Query typeName="it.geosolutions:noise_spatial_table">
+    <ogc:Filter>
+      <ogc:Intersects>
+        <ogc:PropertyName>coordinate</ogc:PropertyName>
+        <gml:Point>
+          <gml:coordinates>${coordinates[1]},${coordinates[0]}</gml:coordinates>
+        </gml:Point>
+      </ogc:Intersects>
+    </ogc:Filter>
+  </wfs:Query>
+</wfs:GetFeature>`;
       
-      fetch(url)
+      fetch('/api/wfs-proxy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml',
+        },
+        body: wfsRequest,
+      })
         .then(res => res.json())
         .then(responseData => {
           if (responseData.features && responseData.features.length > 0) {
@@ -852,3 +871,6 @@ export default function ChartPanel({ isOpen, data, onClose, locationId, noiseLev
     </div>
   );
 }
+
+// Memoize ChartPanel to prevent unnecessary re-renders
+export default memo(ChartPanel);

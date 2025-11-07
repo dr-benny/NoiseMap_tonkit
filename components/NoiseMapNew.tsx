@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useMemo, useCallback } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -41,7 +41,7 @@ interface NoiseFeature {
 export default function NoiseMapNew() {
   const mapInstance = useRef<L.Map | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
-  const hexOverlayRef = useRef<L.ImageOverlay | null>(null);
+  const hexLayerRef = useRef<L.TileLayer.WMS | null>(null);
   const [showDashboard, setShowDashboard] = useState(false);
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -54,6 +54,16 @@ export default function NoiseMapNew() {
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const searchCacheRef = useRef<Map<string, any[]>>(new Map()); // Cache for faster response
   const chartInstanceRef = useRef<any>(null);
+  const [showAIModal, setShowAIModal] = useState(false);
+  const [showAIForm, setShowAIForm] = useState(false);
+  const [aiResponse, setAiResponse] = useState<string>("");
+  const [isLoadingAI, setIsLoadingAI] = useState(false);
+  const [hoursPerDay, setHoursPerDay] = useState<string>("8");
+  const [selectedLocation, setSelectedLocation] = useState<{lat: number; lon: number} | null>(null);
+  const markerPopupRef = useRef<L.Marker | L.CircleMarker | null>(null); // Store marker reference for reopening popup
+  const [followUpQuestion, setFollowUpQuestion] = useState<string>(""); // For follow-up questions
+  const [isLoadingFollowUp, setIsLoadingFollowUp] = useState(false); // Loading state for follow-up
+  const aiModalContentRef = useRef<HTMLDivElement | null>(null); // Ref for AI modal content container
 
   // Initialize map
   useEffect(() => {
@@ -91,6 +101,8 @@ export default function NoiseMapNew() {
         const map = L.map("map", {
           center: [13.756111, 100.516667],
           zoom: 13,
+          minZoom: 10,
+          maxZoom: 18,
           layers: [terrainLayer],
           zoomControl: true,
         });
@@ -109,41 +121,24 @@ export default function NoiseMapNew() {
           .layers(baseLayers, {}, { position: "topright" })
           .addTo(map);
 
-        // Update hex layer function
-        const updateHexLayer = () => {
-          if (hexOverlayRef.current) {
-            map.removeLayer(hexOverlayRef.current);
-          }
-
-          const bounds = map.getBounds();
-          const size = map.getSize();
-
-          const wmsUrl =
-            "http://localhost:8080/geoserver/it.geosolutions/wms?" +
-            L.Util.getParamString({
-              service: "WMS",
-              version: "1.1.0",
-              request: "GetMap",
-              layers: "it.geosolutions:hex_005_e2f8",
-              styles: "hex",
-              format: "image/png",
-              transparent: true,
-              srs: "EPSG:4326",
-              bbox: bounds.toBBoxString(),
-              width: size.x,
-              height: size.y,
-              tiled: false,
-              TILED: false,
-            });
-
-          hexOverlayRef.current = L.imageOverlay(wmsUrl, bounds, {
+        // Create hex layer using WMS TileLayer - automatically updates on map move/zoom
+        if (!hexLayerRef.current) {
+          const wmsUrl = "/api/geoserver-proxy/geoserver/it.geosolutions/wms";
+          
+          hexLayerRef.current = L.tileLayer.wms(wmsUrl, {
+            layers: 'it.geosolutions:hex_005_e2f8',
+            styles: 'hex_005_e2f8',
+            format: 'image/png',
+            transparent: true,
+            version: '1.1.0',
+            crs: L.CRS.EPSG4326,
             opacity: 0.9,
-            interactive: true,
-          }).addTo(map);
-        };
-
-        map.on("moveend zoomend", updateHexLayer);
-        updateHexLayer();
+            attribution: 'Hex Noise Data'
+          });
+          
+          hexLayerRef.current.addTo(map);
+          console.log("[Hex Layer] WMS tile layer added to map");
+        }
 
         // Marker layer
         const markers = L.layerGroup().addTo(map);
@@ -157,7 +152,7 @@ export default function NoiseMapNew() {
             setIsLoadingData(true);
             // Don't show dashboard yet - wait until we confirm hex exists
             // GetFeatureInfo to find hex
-            const wmsUrl = "http://localhost:8080/geoserver/it.geosolutions/wms?";
+            const wmsUrl = "/api/geoserver-proxy/geoserver/it.geosolutions/wms";
             const layer = "it.geosolutions:hex_005_e2f8";
             const bbox = `${lng - 0.001},${lat - 0.001},${lng + 0.001},${lat + 0.001}`;
             const point = map.latLngToContainerPoint(e.latlng);
@@ -166,19 +161,214 @@ export default function NoiseMapNew() {
             const bboxString = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
 
             // Fix URL construction - use proper query parameter format
+            // Ensure point coordinates are within image bounds
+            const imageWidth = size.x;
+            const imageHeight = size.y;
+            const x = Math.max(0, Math.min(imageWidth - 1, Math.round(point.x)));
+            const y = Math.max(0, Math.min(imageHeight - 1, Math.round(point.y)));
+            
+            console.log(`[GetFeatureInfo] Point: (${point.x}, ${point.y}), Image size: ${imageWidth}x${imageHeight}, Clamped: (${x}, ${y})`);
+            
+            // Use L.Util.getParamString to properly format query parameters
             const getFeatureInfoUrl =
-              `${wmsUrl}service=WMS&version=1.1.1&request=GetFeatureInfo` +
-              `&layers=${encodeURIComponent(layer)}` +
-              `&query_layers=${encodeURIComponent(layer)}` +
-              `&info_format=application/json` +
-              `&x=${Math.round(point.x)}&y=${Math.round(point.y)}` +
-              `&srs=EPSG:4326&width=${size.x}&height=${size.y}&bbox=${encodeURIComponent(bboxString)}`;
+              wmsUrl +
+              L.Util.getParamString({
+                service: "WMS",
+                version: "1.1.1",
+                request: "GetFeatureInfo",
+                layers: layer,
+                query_layers: layer,
+                info_format: "application/json",
+                x: x,
+                y: y,
+                srs: "EPSG:4326",
+                width: imageWidth,
+                height: imageHeight,
+                bbox: bboxString,
+              });
 
-            const res = await fetch(getFeatureInfoUrl);
-            if (!res.ok) {
-              const errorText = await res.text();
-              console.error("GetFeatureInfo failed:", res.status, errorText);
-              throw new Error(`GetFeatureInfo failed: ${res.status}`);
+            console.log(`[GetFeatureInfo] Request URL: ${getFeatureInfoUrl}`);
+
+            // Add timeout and retry mechanism for GetFeatureInfo
+            let res;
+            let retryCount = 0;
+            const maxRetries = 2;
+            
+            while (retryCount <= maxRetries) {
+              try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 seconds timeout
+                
+                res = await fetch(getFeatureInfoUrl, {
+                  signal: controller.signal,
+                });
+                
+                clearTimeout(timeoutId);
+                break; // Success, exit retry loop
+              } catch (fetchError: any) {
+                if (fetchError.name === 'AbortError' && retryCount < maxRetries) {
+                  console.warn(`[GetFeatureInfo] Timeout, retrying... (${retryCount + 1}/${maxRetries})`);
+                  retryCount++;
+                  await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+                  continue;
+                }
+                throw fetchError; // Re-throw if not timeout or max retries reached
+              }
+            }
+            
+            if (!res || !res.ok) {
+              let errorText = '';
+              try {
+                errorText = res ? await res.text() : 'No response received';
+              } catch (e) {
+                errorText = 'Unable to read error response';
+              }
+              
+              console.error("❌ GetFeatureInfo failed:", res?.status || 'No response');
+              console.error("❌ Error response:", errorText);
+              
+              // Try to parse error message
+              let errorMessage = 'Unknown GeoServer error';
+              if (errorText) {
+                const errorMatch = errorText.match(/<ServiceException[^>]*>([^<]+)<\/ServiceException>/);
+                if (errorMatch) {
+                  errorMessage = errorMatch[1].trim();
+                } else if (errorText.includes('timeout') || errorText.includes('Timeout')) {
+                  errorMessage = 'Request timeout: GeoServer did not respond in time';
+                }
+              }
+              console.error("❌ GeoServer Error:", errorMessage);
+              
+              // If dimension error, try using WFS instead as fallback
+              if (errorMessage.includes("not in dimensions")) {
+                console.log("⚠️ Dimension error detected, trying WFS query instead...");
+                const wfsUrl = `/api/geoserver-proxy/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=${encodeURIComponent(layer)}&outputFormat=application/json&CQL_FILTER=INTERSECTS(geom,POINT(${lng} ${lat}))&maxFeatures=1`;
+                const wfsRes = await fetch(wfsUrl);
+                if (wfsRes.ok) {
+                  const wfsJson = await wfsRes.json();
+                  if (wfsJson.features && wfsJson.features.length > 0) {
+                    console.log("✅ WFS fallback successful, using WFS result");
+                    // Use WFS result instead
+                    const feature = wfsJson.features[0];
+                    
+                    // Continue with existing code flow
+                    const laeqFromHex = feature.properties?.laeq || feature.properties?.LAeq || null;
+                    const laeq1h = laeqFromHex !== null ? parseFloat(laeqFromHex) : 0;
+                    console.log("✅ Step 1 - Found hex polygon from WFS:");
+                    console.log("  - Hex ID:", feature.properties?.hex_id || feature.id);
+                    console.log("  - LAeq from hex:", laeq1h);
+                    
+                    if (laeq1h === 0) {
+                      console.warn("No LAeq data found in hex");
+                      setIsLoadingData(false);
+                      setShowDashboard(false); // Ensure dashboard is closed
+              return;
+            }
+
+                    setShowDashboard(true);
+                    setDashboardData({
+                      noiseLevels: [],
+                      labels: [],
+                      laeq1h,
+                      totalRecords: 0,
+                      min: 0,
+                      max: 0,
+                    });
+                    
+                    // Extract polygon coordinates for WFS query
+            const coordsList = feature.geometry.coordinates[0]
+              .map((c: number[]) => `${c[0]} ${c[1]}`)
+              .join(" ");
+
+            // Query noise data with WFS
+                    const wfsProxyUrl = "/api/wfs-proxy";
+                    const wfsXml = `<?xml version="1.0" encoding="UTF-8"?>
+<wfs:GetFeature service="WFS" version="1.1.0" outputFormat="application/json"
+  xmlns:wfs="http://www.opengis.net/wfs"
+  xmlns:gml="http://www.opengis.net/gml"
+  xmlns:ogc="http://www.opengis.net/ogc">
+  <wfs:Query typeName="it.geosolutions:noise_spatial_table">
+    <ogc:Filter>
+      <ogc:Intersects>
+        <ogc:PropertyName>coordinate</ogc:PropertyName>
+        <gml:Polygon srsName="EPSG:4326">
+          <gml:exterior>
+            <gml:LinearRing>
+              <gml:posList>${coordsList}</gml:posList>
+            </gml:LinearRing>
+          </gml:exterior>
+        </gml:Polygon>
+      </ogc:Intersects>
+    </ogc:Filter>
+    <ogc:SortBy>
+      <ogc:SortProperty>
+        <ogc:PropertyName>time</ogc:PropertyName>
+        <ogc:SortOrder>DESC</ogc:SortOrder>
+      </ogc:SortProperty>
+    </ogc:SortBy>
+  </wfs:Query>
+</wfs:GetFeature>`;
+
+                    const res2 = await fetch(wfsProxyUrl, {
+                      method: "POST",
+                      headers: { "Content-Type": "text/xml" },
+                      body: wfsXml.trim(),
+                    });
+
+                    if (!res2.ok) {
+                      const errorText = await res2.text();
+                      console.error("❌ WFS query failed:", res2.status);
+                      setIsLoadingData(false);
+                      return;
+                    }
+
+                    const data = await res2.text();
+                    const trimmedData = data.trim();
+                    
+                    if (!trimmedData || trimmedData === '') {
+                      console.error("WFS response is empty");
+                      setIsLoadingData(false);
+                      return;
+                    }
+
+                    let jsonData;
+                    try {
+                      jsonData = JSON.parse(trimmedData);
+                    } catch (parseError) {
+                      console.error("Failed to parse WFS response as JSON:", parseError);
+                      setIsLoadingData(false);
+                      return;
+                    }
+
+                    if (jsonData.features && jsonData.features.length > 0) {
+                      const noiseLevels = jsonData.features.map((f: any) => f.properties.noise_level);
+                      const labels = jsonData.features.map((f: any) => f.properties.time);
+                      
+                      setDashboardData({
+                        noiseLevels,
+                        labels,
+                        laeq1h,
+                        totalRecords: jsonData.features.length,
+                        min: Math.min(...noiseLevels),
+                        max: Math.max(...noiseLevels),
+                      });
+                    }
+                    
+                    setIsLoadingData(false);
+                    return; // Exit early since we used WFS fallback
+                  }
+                }
+              }
+              
+              // No hex found or error - don't show dashboard, just return silently
+              console.log("No hex found at clicked location");
+              setIsLoadingData(false);
+              setShowDashboard(false); // Ensure dashboard is closed
+              return;
+            }
+
+            if (!res) {
+              throw new Error('GetFeatureInfo failed: No response received');
             }
 
             let json;
@@ -187,8 +377,9 @@ export default function NoiseMapNew() {
               
               // Check if response is empty
               if (!responseText || !responseText.trim()) {
-                console.error("GetFeatureInfo response is empty");
+                console.log("GetFeatureInfo response is empty - no hex found");
                 setIsLoadingData(false);
+                setShowDashboard(false); // Ensure dashboard is closed
                 return; // Don't show dashboard if response is empty
               }
 
@@ -200,28 +391,31 @@ export default function NoiseMapNew() {
                 // Parse XML error to extract error message
                 const errorMatch = trimmedText.match(/<ServiceException[^>]*>([^<]+)<\/ServiceException>/i);
                 const errorMessage = errorMatch ? errorMatch[1].trim() : 'Unknown GeoServer error';
-                console.error("❌ GeoServer Error:", errorMessage);
-                console.error("Full XML Response:", trimmedText.substring(0, 500));
+                console.log("❌ GeoServer Error (no hex found):", errorMessage);
                 setIsLoadingData(false);
+                setShowDashboard(false); // Ensure dashboard is closed
                 return; // Don't show dashboard on error
               }
               
               if (!trimmedText.startsWith('{') && !trimmedText.startsWith('[')) {
-                console.error("GetFeatureInfo response is not JSON:", trimmedText.substring(0, 200));
+                console.log("GetFeatureInfo response is not JSON - no hex found");
                 setIsLoadingData(false);
+                setShowDashboard(false); // Ensure dashboard is closed
                 return; // Don't show dashboard on error
               }
 
               json = JSON.parse(trimmedText);
             } catch (parseError: any) {
               console.error("Failed to parse GetFeatureInfo response:", parseError.message);
-              alert(`Failed to parse response: ${parseError.message}`);
-              return;
+              setIsLoadingData(false);
+              setShowDashboard(false); // Ensure dashboard is closed
+              return; // Don't show anything if parse fails
             }
 
             if (!json.features || json.features.length === 0) {
-              console.warn("No hex found at clicked point");
+              console.log("No hex found at clicked point");
               setIsLoadingData(false);
+              setShowDashboard(false); // Ensure dashboard is closed
               return; // Don't show dashboard if no hex found
             }
 
@@ -244,7 +438,6 @@ export default function NoiseMapNew() {
               totalRecords: 0,
               min: 0,
               max: 0,
-              avg: 0,
             });
             
             // Step 2: Extract polygon coordinates from hex feature
@@ -293,23 +486,9 @@ export default function NoiseMapNew() {
               console.error("❌ WFS query failed:", res2.status);
               console.error("❌ Error response:", errorText);
               
-              // Try to parse error message from JSON response
-              let errorMessage = `WFS query failed: ${res2.status}`;
-              try {
-                const errorJson = JSON.parse(errorText);
-                if (errorJson.error) {
-                  errorMessage = errorJson.error;
-                }
-              } catch (e) {
-                // Keep default error message
-              }
-              
+              // Don't show notification or dashboard when WFS query fails
               setIsLoadingData(false);
-              setNotification({
-                message: errorMessage,
-                type: 'error'
-              });
-              console.error("WFS Error:", errorMessage);
+              setShowDashboard(false); // Ensure dashboard is closed
               return;
             }
 
@@ -318,7 +497,8 @@ export default function NoiseMapNew() {
             // Check if response is empty or not JSON
             if (!data || !data.trim()) {
               console.error("WFS response is empty");
-              alert("No data received from server");
+              setIsLoadingData(false);
+              setShowDashboard(false); // Ensure dashboard is closed
               return;
             }
 
@@ -326,7 +506,8 @@ export default function NoiseMapNew() {
             const trimmedData = data.trim();
             if (!trimmedData.startsWith('{') && !trimmedData.startsWith('[')) {
               console.error("WFS response is not JSON. Response:", trimmedData.substring(0, 200));
-              alert("Server returned invalid data format. Please check console for details.");
+              setIsLoadingData(false);
+              setShowDashboard(false); // Ensure dashboard is closed
               return;
             }
 
@@ -336,7 +517,8 @@ export default function NoiseMapNew() {
             } catch (parseError: any) {
               console.error("Failed to parse WFS response as JSON:", parseError.message);
               console.error("Response content:", trimmedData.substring(0, 500));
-              alert(`Failed to parse response: ${parseError.message}`);
+              setIsLoadingData(false);
+              setShowDashboard(false); // Ensure dashboard is closed
               return;
             }
 
@@ -364,12 +546,13 @@ export default function NoiseMapNew() {
                 totalRecords: noiseLevels.length,
                 min: Math.min(...noiseLevels),
                 max: Math.max(...noiseLevels),
-                avg: noiseLevels.reduce((a: number, b: number) => a + b, 0) / noiseLevels.length,
               });
             }
           } catch (err: any) {
             console.error("Error:", err);
-            alert(`Error: ${err.message}`);
+            // Don't show alert or dashboard when clicking on non-hex areas
+            setIsLoadingData(false);
+            setShowDashboard(false); // Ensure dashboard is closed
           } finally {
             setIsLoadingData(false);
           }
@@ -400,7 +583,7 @@ export default function NoiseMapNew() {
   useEffect(() => {
     if (mapInstance.current && markersRef.current) {
       const url =
-        "http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:current_noise&outputFormat=application/json";
+        "/api/geoserver-proxy/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:current_noise&outputFormat=application/json";
 
       fetch(url)
         .then((res) => res.json())
@@ -462,23 +645,137 @@ export default function NoiseMapNew() {
                   >
                     More Info <i class="fa-solid fa-eye" style="margin-left: 5px;"></i>
                   </button>
+                  <button 
+                    class="popup-ai-btn-${feature.properties.id}"
+                    style="
+                      width: 100%;
+                      margin-top: 8px;
+                      padding: 10px 20px;
+                      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                      color: white;
+                      border: none;
+                      border-radius: 8px;
+                      font-weight: 600;
+                      cursor: pointer;
+                      transition: all 0.2s;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      gap: 8px;
+                    "
+                  >
+                    <i class="fa fa-robot"></i>
+                    <span>ถาม AI เกี่ยวกับระดับเสียง</span>
+                  </button>
                 </div>
               `;
 
               marker.bindPopup(popupContent);
+              console.log(`[MARKER ${feature.properties.id}] Popup bound`);
 
-              marker.on("popupopen", function () {
-                setTimeout(() => {
-                  const btn = document.querySelector(
+              // Function to attach event listeners - called every time popup opens
+              const attachPopupListeners = () => {
+                console.log(`[MARKER ${feature.properties.id}] 🔵 POPUP OPEN - Starting to attach listeners`);
+                
+                // Use multiple attempts with increasing delays to ensure DOM is ready
+                const tryAttach = (attempt = 0) => {
+                  console.log(`[MARKER ${feature.properties.id}] Try attach attempt ${attempt + 1}/10`);
+                  
+                  const popupContainer = marker.getPopup()?.getElement();
+                  if (!popupContainer && attempt < 10) {
+                    console.log(`[MARKER ${feature.properties.id}] Popup container not found, retrying...`);
+                    setTimeout(() => tryAttach(attempt + 1), 50);
+                    return;
+                  }
+                  
+                  if (!popupContainer) {
+                    console.error(`[MARKER ${feature.properties.id}] ❌ Popup container not found after ${attempt} attempts`);
+                    return;
+                  }
+                  
+                  console.log(`[MARKER ${feature.properties.id}] ✅ Popup container found`);
+                  
+                  // Find buttons within the popup container
+                  const btn = popupContainer.querySelector(
                     `.popup-btn-${feature.properties.id}`
-                  );
+                  ) as HTMLElement;
+                  
                   if (btn) {
-                    btn.addEventListener("click", () => {
+                    console.log(`[MARKER ${feature.properties.id}] ✅ Found More Info button`);
+                    // Remove old listener by cloning
+                    const newBtn = btn.cloneNode(true) as HTMLElement;
+                    btn.parentNode?.replaceChild(newBtn, btn);
+                    newBtn.addEventListener("click", (e) => {
+                      console.log(`[MARKER ${feature.properties.id}] More Info button clicked`);
+                      e.preventDefault();
+                      e.stopPropagation();
                       fetchMarkerData(feature.properties.id, lat, lng);
                     });
+                    console.log(`[MARKER ${feature.properties.id}] ✅ More Info button listener attached`);
+                  } else {
+                    console.warn(`[MARKER ${feature.properties.id}] ⚠️ More Info button not found`);
                   }
-                }, 100);
+                  
+                  const aiBtn = popupContainer.querySelector(
+                    `.popup-ai-btn-${feature.properties.id}`
+                  ) as HTMLElement;
+                  
+                  if (aiBtn) {
+                    console.log(`[MARKER ${feature.properties.id}] ✅ Found AI button`);
+                    // Remove old listener by cloning
+                    const newAiBtn = aiBtn.cloneNode(true) as HTMLElement;
+                    aiBtn.parentNode?.replaceChild(newAiBtn, aiBtn);
+                    newAiBtn.addEventListener("click", (e) => {
+                      console.log(`[MARKER ${feature.properties.id}] 🤖 AI button clicked!`);
+                      e.preventDefault();
+                      e.stopPropagation();
+                      
+                      // Store marker reference to reopen popup later
+                      markerPopupRef.current = marker;
+                      console.log(`[MARKER ${feature.properties.id}] Marker reference stored`);
+                      
+                      // Close dashboard when asking AI
+                      setShowDashboard(false);
+                      setDashboardData(null);
+                      setIsLoadingData(false);
+                      if (chartInstanceRef.current) {
+                        chartInstanceRef.current.destroy();
+                        chartInstanceRef.current = null;
+                      }
+                      // Close popup first
+                      marker.closePopup();
+                      console.log(`[MARKER ${feature.properties.id}] Popup closed, opening AI form`);
+                      // Open AI form (pass marker reference)
+                      handleAskAI(lat, lng, marker);
+                    });
+                    console.log(`[MARKER ${feature.properties.id}] ✅ AI button listener attached`);
+                  } else {
+                    console.error(`[MARKER ${feature.properties.id}] ❌ AI button not found!`);
+                    console.log(`[MARKER ${feature.properties.id}] Popup container HTML:`, popupContainer.innerHTML.substring(0, 500));
+                  }
+                  
+                  console.log(`[MARKER ${feature.properties.id}] ✅ Finished attaching listeners`);
+                };
+                
+                tryAttach();
+              };
+
+              // Remove any existing listeners first
+              marker.off("popupopen");
+              marker.off("popupclose");
+              
+              // Log when popup closes and remove marker
+              marker.on("popupclose", () => {
+                console.log(`[MARKER ${feature.properties.id}] 🔴 POPUP CLOSED - Removing marker`);
+                // Remove marker from map when popup closes
+                if (markersRef.current && marker) {
+                  markersRef.current.removeLayer(marker);
+                }
               });
+              
+              // Attach listeners when popup opens (every time it opens)
+              marker.on("popupopen", attachPopupListeners);
+              console.log(`[MARKER ${feature.properties.id}] ✅ popupopen event listener registered`);
             });
           }
         })
@@ -494,7 +791,7 @@ export default function NoiseMapNew() {
       setIsLoadingData(true);
       setShowDashboard(true); // Show dashboard immediately with loading state
       
-      const url = `http://localhost:8080/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:noise_spatial_table&outputFormat=application/json&CQL_FILTER=INTERSECTS(coordinate,POINT(${lng} ${lat}))&SORTBY=time+D&maxFeatures=60`;
+      const url = `/api/geoserver-proxy/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:noise_spatial_table&outputFormat=application/json&CQL_FILTER=INTERSECTS(coordinate,POINT(${lng} ${lat}))&SORTBY=time+D&maxFeatures=60`;
 
       const response = await fetch(url);
       const data = await response.json();
@@ -524,21 +821,57 @@ export default function NoiseMapNew() {
         // Query hex layer to get LAeq for this location
         let laeq1h = 0;
         try {
-          const hexWmsUrl = "http://localhost:8080/geoserver/it.geosolutions/wms?";
+          const hexWmsUrl = "/api/geoserver-proxy/geoserver/it.geosolutions/wms";
           const hexLayer = "it.geosolutions:hex_005_e2f8";
           const point = { x: 50, y: 50 }; // Approximate point for GetFeatureInfo
           const hexBbox = `${lng - 0.001},${lat - 0.001},${lng + 0.001},${lat + 0.001}`;
           
+          // Use L.Util.getParamString to properly format query parameters
           const hexGetFeatureInfoUrl =
-            `${hexWmsUrl}service=WMS&version=1.1.1&request=GetFeatureInfo` +
-            `&layers=${encodeURIComponent(hexLayer)}` +
-            `&query_layers=${encodeURIComponent(hexLayer)}` +
-            `&info_format=application/json` +
-            `&x=${point.x}&y=${point.y}` +
-            `&srs=EPSG:4326&width=101&height=101&bbox=${encodeURIComponent(hexBbox)}`;
+            hexWmsUrl +
+            L.Util.getParamString({
+              service: "WMS",
+              version: "1.1.1",
+              request: "GetFeatureInfo",
+              layers: hexLayer,
+              query_layers: hexLayer,
+              info_format: "application/json",
+              x: point.x,
+              y: point.y,
+              srs: "EPSG:4326",
+              width: 101,
+              height: 101,
+              bbox: hexBbox,
+            });
           
-          const hexRes = await fetch(hexGetFeatureInfoUrl);
-          if (hexRes.ok) {
+          // Add timeout and retry mechanism for hexGetFeatureInfo
+          let hexRes;
+          let hexRetryCount = 0;
+          const hexMaxRetries = 2;
+          
+          while (hexRetryCount <= hexMaxRetries) {
+            try {
+              const hexController = new AbortController();
+              const hexTimeoutId = setTimeout(() => hexController.abort(), 45000); // 45 seconds timeout
+              
+              hexRes = await fetch(hexGetFeatureInfoUrl, {
+                signal: hexController.signal,
+              });
+              
+              clearTimeout(hexTimeoutId);
+              break; // Success, exit retry loop
+            } catch (hexFetchError: any) {
+              if (hexFetchError.name === 'AbortError' && hexRetryCount < hexMaxRetries) {
+                console.warn(`[hexGetFeatureInfo] Timeout, retrying... (${hexRetryCount + 1}/${hexMaxRetries})`);
+                hexRetryCount++;
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+                continue;
+              }
+              throw hexFetchError; // Re-throw if not timeout or max retries reached
+            }
+          }
+          
+          if (hexRes && hexRes.ok) {
             const hexJson = await hexRes.json();
             if (hexJson.features && hexJson.features.length > 0) {
               const hexFeature = hexJson.features[0];
@@ -552,6 +885,7 @@ export default function NoiseMapNew() {
         } catch (hexError) {
           console.warn("Could not get LAeq from hex layer, using 0:", hexError);
         }
+        
 
         setDashboardData({
           noiseLevels: noiseLevels.reverse(),
@@ -560,7 +894,6 @@ export default function NoiseMapNew() {
           totalRecords: noiseLevels.length,
           min: Math.min(...noiseLevels),
           max: Math.max(...noiseLevels),
-          avg: noiseLevels.reduce((a: number, b: number) => a + b, 0) / noiseLevels.length,
         });
       }
     } catch (error) {
@@ -571,7 +904,8 @@ export default function NoiseMapNew() {
   };
 
   // Function to downsample data for smooth visualization
-  const downsampleData = (data: number[], labels: string[], maxPoints: number = 100) => {
+  // Memoized downsample function for chart performance
+  const downsampleData = useCallback((data: number[], labels: string[], maxPoints: number = 100) => {
     if (data.length <= maxPoints) {
       return { data, labels };
     }
@@ -595,7 +929,7 @@ export default function NoiseMapNew() {
     }
     
     return { data: downsampledData, labels: downsampledLabels };
-  };
+  }, []);
 
   // Render chart when dashboard data is available
   useEffect(() => {
@@ -846,8 +1180,8 @@ export default function NoiseMapNew() {
     };
   }, [showDashboard, dashboardData]);
 
-  // Search location function - using Nominatim (OpenStreetMap) - 100% free, supports Thai
-  const handleSearch = async (query?: string, showSuggestionsOnly: boolean = false) => {
+  // Memoized search function with caching
+  const handleSearch = useCallback(async (query?: string, showSuggestionsOnly: boolean = false) => {
     const queryToSearch = query || searchQuery.trim();
     if (!queryToSearch || !mapInstance.current) {
       setSearchResults([]);
@@ -1016,10 +1350,10 @@ export default function NoiseMapNew() {
     } finally {
       setIsSearching(false);
     }
-  };
+  }, [searchQuery, mapInstance]);
 
-  // Handle input change with debounce - wait for user to stop typing
-  const handleInputChange = (value: string) => {
+  // Memoized input change handler with debounce
+  const handleInputChange = useCallback((value: string) => {
     setSearchQuery(value);
     
     // Clear previous timeout
@@ -1054,10 +1388,10 @@ export default function NoiseMapNew() {
       setShowSuggestions(false);
       setIsSearching(false);
     }
-  };
+  }, [handleSearch]);
 
-  // Handle location selection - show detailed address in popup (custom format)
-  const handleSelectLocation = (lat: number, lon: number, name: string, fullAddress?: string, addressDetails?: any) => {
+  // Memoized location selection handler
+  const handleSelectLocation = useCallback((lat: number, lon: number, name: string, fullAddress?: string, addressDetails?: any) => {
     if (!mapInstance.current) return;
     
     if (searchMarkerRef.current) {
@@ -1175,6 +1509,15 @@ export default function NoiseMapNew() {
       }
     }
     
+    // Add AI Ask button
+    const buttonId = `ask-ai-btn-${lat}-${lon}-${Date.now()}`;
+    popupContent += `<div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb;">`;
+    popupContent += `<button id="${buttonId}" style="width: 100%; padding: 12px 20px; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(99,102,241,0.3); display: flex; align-items: center; justify-content: center; gap: 8px;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(99,102,241,0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(99,102,241,0.3)'">`;
+    popupContent += `<i class="fa fa-robot" style="font-size: 16px;"></i>`;
+    popupContent += `<span>ถาม AI เกี่ยวกับระดับเสียง</span>`;
+    popupContent += `</button>`;
+    popupContent += `</div>`;
+    
     popupContent += `</div></div>`;
     
     const marker = L.marker([lat, lon], {
@@ -1203,12 +1546,35 @@ export default function NoiseMapNew() {
     
     marker.bindPopup(popup).openPopup();
     
+    // Remove marker when popup closes
+    marker.on("popupclose", () => {
+      console.log(`[SEARCH MARKER] 🔴 POPUP CLOSED - Removing search marker`);
+      if (mapInstance.current && marker) {
+        mapInstance.current.removeLayer(marker);
+        searchMarkerRef.current = null;
+      }
+    });
+    
+    // Store buttonId in a variable accessible in setTimeout
+    const storedButtonId = buttonId;
+    
     // Ensure popup is positioned correctly after map animation
     setTimeout(() => {
       if (marker.getPopup() && marker.isPopupOpen()) {
         marker.getPopup()?.update();
       }
-    }, 100);
+      
+      // Add click handler for AI button
+      const aiButton = document.getElementById(storedButtonId);
+      if (aiButton) {
+        aiButton.addEventListener('click', () => {
+          // Close popup first (this will trigger popupclose event and remove marker)
+          marker.closePopup();
+          // Then open AI form (handleAskAI will close dashboard)
+          handleAskAI(lat, lon);
+        });
+      }
+    }, 200);
     searchMarkerRef.current = marker;
     
     mapInstance.current.setView([lat, lon], 15, {
@@ -1234,6 +1600,175 @@ export default function NoiseMapNew() {
     setSearchQuery("");
     setSearchResults([]);
     setShowSuggestions(false);
+  }, [mapInstance]);
+
+  // Handle AI ask - show form first
+  const handleAskAI = (lat: number, lon: number, marker?: L.Marker | L.CircleMarker) => {
+    // Store marker reference if provided (from marker popup)
+    if (marker) {
+      markerPopupRef.current = marker;
+    } else {
+      // Clear marker reference if from search (not from marker)
+      markerPopupRef.current = null;
+    }
+    
+    // Close dashboard when asking AI
+    setShowDashboard(false);
+    setDashboardData(null);
+    setIsLoadingData(false);
+    if (chartInstanceRef.current) {
+      chartInstanceRef.current.destroy();
+      chartInstanceRef.current = null;
+    }
+    
+    setSelectedLocation({ lat, lon });
+    setShowAIForm(true);
+    setHoursPerDay("8"); // Reset to default
+  };
+
+  // Submit AI form and call API
+  const handleSubmitAIForm = async () => {
+    if (!selectedLocation) return;
+    
+    const hours = parseInt(hoursPerDay);
+    if (isNaN(hours) || hours < 0 || hours > 24) {
+      setNotification({
+        message: "กรุณากรอกจำนวนชั่วโมงที่ถูกต้อง (0-24)",
+        type: 'error'
+      });
+      return;
+    }
+
+    setShowAIForm(false);
+    setIsLoadingAI(true);
+    setShowAIModal(true);
+    setAiResponse("");
+
+    try {
+      // Step 1: Get hex polygon at this location to get LAeq
+      const hexUrl = `/api/geoserver-proxy/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=it.geosolutions:hex_005_e2f8&outputFormat=application/json&CQL_FILTER=INTERSECTS(geom,POINT(${selectedLocation.lon} ${selectedLocation.lat}))&maxFeatures=1`;
+      
+      const hexRes = await fetch(hexUrl);
+      if (!hexRes.ok) {
+        throw new Error("ไม่สามารถดึงข้อมูล hex polygon ได้");
+      }
+
+      const hexJson = await hexRes.json();
+      
+      if (!hexJson.features || hexJson.features.length === 0) {
+        setAiResponse("ยังไม่มีข้อมูลระดับเสียงในพื้นที่นี้");
+        setIsLoadingAI(false);
+        return;
+      }
+
+      const hexFeature = hexJson.features[0];
+      const laeq = hexFeature.properties?.laeq || hexFeature.properties?.LAeq || null;
+
+      if (!laeq || laeq === 0) {
+        setAiResponse("ยังไม่มีข้อมูลระดับเสียงในพื้นที่นี้");
+        setIsLoadingAI(false);
+        return;
+      }
+
+      // Step 2: Use hours from user input
+      const hour = hours.toString();
+
+      // Step 3: Call AI API through proxy
+      const aiRes = await fetch("/api/ai-proxy", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          laeq: laeq.toString(),
+          hour: hour,
+        }),
+      });
+
+      if (!aiRes.ok) {
+        const errorData = await aiRes.json().catch(() => ({}));
+        throw new Error(errorData.error || `AI API error: ${aiRes.status}`);
+      }
+
+      const aiData = await aiRes.json();
+      
+      // Extract output from response
+      const output = aiData.output || aiData.message || "ไม่สามารถรับข้อมูลจาก AI ได้";
+      setAiResponse(output);
+      
+      // Scroll to bottom after first response is set
+      setTimeout(() => {
+        if (aiModalContentRef.current) {
+          aiModalContentRef.current.scrollTo({
+            top: aiModalContentRef.current.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
+      }, 100);
+    } catch (error: any) {
+      console.error("Error asking AI:", error);
+      setAiResponse(`เกิดข้อผิดพลาด: ${error.message || "ไม่สามารถเชื่อมต่อกับ AI ได้"}`);
+    } finally {
+      setIsLoadingAI(false);
+    }
+  };
+
+  // Handle follow-up question
+  const handleFollowUpQuestion = async () => {
+    if (!followUpQuestion.trim()) return;
+    
+    setIsLoadingFollowUp(true);
+    const currentQuestion = followUpQuestion.trim();
+    setFollowUpQuestion(""); // Clear input immediately for better UX
+
+    try {
+      // Call follow-up AI API through proxy
+      const aiRes = await fetch("/api/ai-followup-proxy", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question: currentQuestion,
+        }),
+      });
+
+      if (!aiRes.ok) {
+        const errorData = await aiRes.json().catch(() => ({}));
+        throw new Error(errorData.error || `AI API error: ${aiRes.status}`);
+      }
+
+      const aiData = await aiRes.json();
+      
+      // Extract output from response
+      const output = aiData.output || aiData.message || "ไม่สามารถรับข้อมูลจาก AI ได้";
+      
+      // Append new response to existing response with separator
+      setAiResponse(prev => {
+        if (prev) {
+          return prev + "\n\n---\n\n" + output;
+        }
+        return output;
+      });
+      
+      // Scroll to bottom after response is updated
+      setTimeout(() => {
+        if (aiModalContentRef.current) {
+          aiModalContentRef.current.scrollTo({
+            top: aiModalContentRef.current.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
+      }, 100);
+    } catch (error: any) {
+      console.error("Error asking follow-up question:", error);
+      setNotification({
+        message: `เกิดข้อผิดพลาด: ${error.message || "ไม่สามารถเชื่อมต่อกับ AI ได้"}`,
+        type: 'error'
+      });
+    } finally {
+      setIsLoadingFollowUp(false);
+    }
   };
 
   // Close search results when clicking outside
@@ -1258,12 +1793,12 @@ export default function NoiseMapNew() {
     };
   }, []);
 
-  // Helper function to get marker color by noise level
-  function getMarkerColor(noiseLevel: number): string {
+  // Memoized helper function to get marker color by noise level
+  const getMarkerColor = useCallback((noiseLevel: number): string => {
     if (noiseLevel > 70) return "#ef4444"; // Red
     else if (noiseLevel > 50) return "#f97316"; // Orange
     return "#22c55e"; // Green
-  }
+  }, []);
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-gray-50">
@@ -1523,9 +2058,10 @@ export default function NoiseMapNew() {
             {dashboardData && (
               <>
             {/* Stats Cards - Show LAeq immediately, other stats show loading or 0 */}
-            <div className="grid grid-cols-2 gap-3 mb-6">
+            <div className="space-y-3 mb-6">
+              <div className="grid grid-cols-2 gap-3">
               <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
-                <div className="text-xs text-blue-600 mb-1">LAeq (All Time)</div>
+                  <div className="text-xs text-blue-600 mb-1">LAeq (All Time)</div>
                 <div className="text-2xl font-bold text-blue-700">
                   {dashboardData.laeq1h.toFixed(1)}
                   <span className="text-sm">dB(A)</span>
@@ -1534,43 +2070,27 @@ export default function NoiseMapNew() {
               <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
                 <div className="text-xs text-green-600 mb-1">Total Records</div>
                 <div className="text-2xl font-bold text-green-700">
-                  {isLoadingData ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
-                      <span>Loading...</span>
-                    </div>
-                  ) : (
-                    dashboardData.totalRecords
-                  )}
+                    {isLoadingData ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+                        <span>Loading...</span>
+                </div>
+                    ) : (
+                      dashboardData.totalRecords
+                    )}
+              </div>
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-lg border border-orange-200">
-                <div className="text-xs text-orange-600 mb-1">Min</div>
-                <div className="text-xl font-bold text-orange-700">
-                  {isLoadingData ? '-' : dashboardData.min.toFixed(1)} dB
+              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-5 rounded-lg border border-orange-200">
+                <div className="text-sm text-orange-600 mb-2">Min</div>
+                <div className="text-3xl font-bold text-orange-700">
+                  {isLoadingData ? '-' : dashboardData.min.toFixed(1)} <span className="text-lg">dB</span>
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-red-50 to-red-100 p-4 rounded-lg border border-red-200">
-                <div className="text-xs text-red-600 mb-1">Max</div>
-                <div className="text-xl font-bold text-red-700">
-                  {isLoadingData ? '-' : dashboardData.max.toFixed(1)} dB
-                </div>
-              </div>
-            </div>
-
-            {/* Average */}
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200 mb-6">
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-purple-600">Average</div>
-                <div className="text-xl font-bold text-purple-700">
-                  {isLoadingData ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-                      <span>loading...</span>
-                    </div>
-                  ) : (
-                    `${dashboardData.avg.toFixed(1)} dB(A)`
-                  )}
+              <div className="bg-gradient-to-br from-red-50 to-red-100 p-5 rounded-lg border border-red-200">
+                <div className="text-sm text-red-600 mb-2">Max</div>
+                <div className="text-3xl font-bold text-red-700">
+                  {isLoadingData ? '-' : dashboardData.max.toFixed(1)} <span className="text-lg">dB</span>
                 </div>
               </div>
             </div>
@@ -1591,9 +2111,9 @@ export default function NoiseMapNew() {
                   </div>
                 </div>
               ) : (
-                <div style={{ height: "300px", position: "relative" }}>
-                  <canvas id="noiseChart"></canvas>
-                </div>
+              <div style={{ height: "300px", position: "relative" }}>
+                <canvas id="noiseChart"></canvas>
+              </div>
               )}
             </div>
               </>
@@ -1601,6 +2121,280 @@ export default function NoiseMapNew() {
           </div>
         </div>
       )}
+
+      {/* AI Form Modal */}
+      {showAIForm && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => {
+            setShowAIForm(false);
+            setSelectedLocation(null);
+            // Reopen marker popup if it was opened from a marker
+            if (markerPopupRef.current) {
+              setTimeout(() => {
+                markerPopupRef.current?.openPopup();
+              }, 100);
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-purple-700 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white bg-opacity-30 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                    <i className="fa fa-robot text-white text-xl"></i>
+                  </div>
+                  <h2 className="text-white text-xl font-bold">ถาม AI เกี่ยวกับระดับเสียง</h2>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowAIForm(false);
+                    setSelectedLocation(null);
+                    // Reopen marker popup if it was opened from a marker
+                    if (markerPopupRef.current) {
+                      setTimeout(() => {
+                        markerPopupRef.current?.openPopup();
+                      }, 100);
+                    }
+                  }}
+                  className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"
+                >
+                  <i className="fa fa-times text-xl"></i>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6">
+              <div className="mb-6">
+                <label className="block text-gray-700 font-medium mb-3 text-lg">
+                  คุณอยู่ในพื้นที่นี้เฉลี่ยกี่ชั่วโมงต่อวัน?
+                </label>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="number"
+                    min="0"
+                    max="24"
+                    value={hoursPerDay}
+                    onChange={(e) => setHoursPerDay(e.target.value)}
+                    className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-lg font-medium"
+                    placeholder="8"
+                    autoFocus
+                  />
+                  <span className="text-gray-600 font-medium text-lg">ชั่วโมง/วัน</span>
+                </div>
+                <p className="text-sm text-gray-500 mt-2">
+                  กรุณากรอกจำนวนชั่วโมงที่คุณอยู่ในพื้นที่นี้ต่อวัน (0-24 ชั่วโมง)
+                </p>
+              </div>
+
+              {/* Quick selection buttons */}
+              <div className="grid grid-cols-4 gap-2 mb-6">
+                {[1, 2, 4, 8].map((h) => (
+                  <button
+                    key={h}
+                    onClick={() => setHoursPerDay(h.toString())}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                      hoursPerDay === h.toString()
+                        ? 'bg-indigo-600 text-white shadow-lg scale-105'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {h} ชม.
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowAIForm(false);
+                  setSelectedLocation(null);
+                  // Reopen marker popup if it was opened from a marker
+                  if (markerPopupRef.current) {
+                    setTimeout(() => {
+                      if (markerPopupRef.current) {
+                        markerPopupRef.current.openPopup();
+                        // Force trigger popupopen event to reattach listeners
+                        markerPopupRef.current.fire('popupopen');
+                      }
+                    }, 100);
+                  }
+                }}
+                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleSubmitAIForm}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
+              >
+                <i className="fa fa-paper-plane"></i>
+                <span>ส่งคำถาม</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Response Modal */}
+      {showAIModal && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => {
+            setShowAIModal(false);
+            setAiResponse("");
+            setFollowUpQuestion("");
+            // Reopen marker popup if it was opened from a marker
+            if (markerPopupRef.current) {
+              setTimeout(() => {
+                markerPopupRef.current?.openPopup();
+              }, 100);
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-purple-700 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white bg-opacity-30 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                  <i className="fa fa-robot text-white text-xl"></i>
+                </div>
+                <h2 className="text-white text-xl font-bold">คำตอบจาก AI</h2>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAIModal(false);
+                  setAiResponse("");
+                  setFollowUpQuestion("");
+                  // Reopen marker popup if it was opened from a marker
+                  if (markerPopupRef.current) {
+                    setTimeout(() => {
+                      if (markerPopupRef.current) {
+                        markerPopupRef.current.openPopup();
+                        // Force trigger popupopen event to reattach listeners
+                        markerPopupRef.current.fire('popupopen');
+                      }
+                    }, 100);
+                  }
+                }}
+                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"
+              >
+                <i className="fa fa-times text-xl"></i>
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div 
+              ref={aiModalContentRef}
+              className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-gray-50 to-white"
+            >
+              {isLoadingAI ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                  <p className="text-gray-600 font-medium">กำลังถาม AI...</p>
+                </div>
+              ) : aiResponse ? (
+                <div className="prose max-w-none">
+                  <div
+                    className="text-gray-800 leading-relaxed whitespace-pre-line"
+                    style={{
+                      fontFamily: "'Inter', 'Segoe UI', sans-serif",
+                      fontSize: "15px",
+                      lineHeight: "1.8",
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: aiResponse
+                        .replace(/\n\n---\n\n/g, '<div style="margin: 32px 0; border-top: 3px solid #6366f1; border-bottom: none; border-left: none; border-right: none; box-shadow: 0 1px 0 rgba(99, 102, 241, 0.1);"></div>')
+                        .replace(/\n/g, "<br>")
+                        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+                        .replace(/\*(.*?)\*/g, "<em>$1</em>"),
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <i className="fa fa-info-circle text-4xl mb-4"></i>
+                  <p>ไม่พบข้อมูล</p>
+                </div>
+              )}
+            </div>
+
+            {/* Follow-up Question Input */}
+            {!isLoadingAI && aiResponse && (
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={followUpQuestion}
+                    onChange={(e) => setFollowUpQuestion(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleFollowUpQuestion();
+                      }
+                    }}
+                    placeholder="ถามเพิ่มเติม..."
+                    disabled={isLoadingFollowUp}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  />
+                  <button
+                    onClick={handleFollowUpQuestion}
+                    disabled={isLoadingFollowUp || !followUpQuestion.trim()}
+                    className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isLoadingFollowUp ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>กำลังส่ง...</span>
+                      </>
+                    ) : (
+                      <>
+                        <i className="fa fa-paper-plane"></i>
+                        <span>ส่ง</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => {
+                  setShowAIModal(false);
+                  setAiResponse("");
+                  setFollowUpQuestion("");
+                  // Reopen marker popup if it was opened from a marker
+                  if (markerPopupRef.current) {
+                    setTimeout(() => {
+                      if (markerPopupRef.current) {
+                        markerPopupRef.current.openPopup();
+                        // Force trigger popupopen event to reattach listeners
+                        markerPopupRef.current.fire('popupopen');
+                      }
+                    }, 100);
+                  }
+                }}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

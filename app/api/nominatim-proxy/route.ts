@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Force dynamic rendering for this route (uses searchParams)
+export const dynamic = 'force-dynamic';
+
 // Nominatim Proxy - Forward requests to Nominatim API to avoid CORS issues
 export async function GET(request: NextRequest) {
   try {

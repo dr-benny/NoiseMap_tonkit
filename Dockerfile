@@ -1,6 +1,6 @@
 # Stage 1: Dependencies
 FROM node:20-alpine AS deps
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat python3 make g++ cairo-dev jpeg-dev pango-dev giflib-dev
 WORKDIR /app
 
 # Copy package files
@@ -9,6 +9,7 @@ RUN npm ci
 
 # Stage 2: Builder
 FROM node:20-alpine AS builder
+RUN apk add --no-cache python3 make g++ cairo-dev jpeg-dev pango-dev giflib-dev
 WORKDIR /app
 
 # Copy dependencies from deps stage
@@ -23,6 +24,7 @@ RUN npm run build
 
 # Stage 3: Runner
 FROM node:20-alpine AS runner
+RUN apk add --no-cache cairo jpeg pango giflib
 WORKDIR /app
 
 ENV NODE_ENV=production

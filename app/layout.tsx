@@ -5,6 +5,10 @@ import 'leaflet/dist/leaflet.css';
 export const metadata: Metadata = {
   title: "Noise Map - TonkitLab",
   description: "Real-time noise monitoring system",
+  icons: {
+    icon: '/icon.svg',
+    apple: '/icon.svg',
+  },
 };
 
 export default function RootLayout({

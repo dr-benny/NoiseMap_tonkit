@@ -2,20 +2,23 @@ version: '3.8'
 
 services:
   noisemap:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: bennyeiei555/noisemap-tonkit:latest
     container_name: noisemap-tonkit
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - GEOSERVER_URL=${GEOSERVER_URL:-http://host.docker.internal:8080}
+      # ใช้ private IP ของ EC2 instance (หาได้ด้วย: hostname -I | awk '{print $1}')
+      # หรือใช้ public IP ถ้า GeoServer expose ออกมา
+      - GEOSERVER_URL=${GEOSERVER_URL:-http://172.31.14.245:8080}
       - GEOSERVER_USER=${GEOSERVER_USER:-admin}
       - GEOSERVER_PASSWORD=${GEOSERVER_PASSWORD:-geoserver}
       - DOCKER_HOST_IP=${DOCKER_HOST_IP:-172.23.0.1}
       - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
       - NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=${NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN:-}
+    # ไม่ต้องใช้ network เดียวกัน เพราะ GeoServer อยู่คนละ network
+    # networks:
+    #   - gis-net
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
